@@ -1,13 +1,53 @@
 #include <ftn_solo_control/estimators.h>
+#include <ftn_solo_control/trajectories/piecewise_linear.h>
+#include <ftn_solo_control/trajectories/spline.h>
 #include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
 #include <ftn_solo_control/utils/visualization_utils.h>
 
 #include <boost/python.hpp>
+#include <boost/python/suite/indexing/map_indexing_suite.hpp>
+#include <eigenpy/eigen-from-python.hpp>
 #include <eigenpy/eigenpy.hpp>
 #include <ftn_solo_control/types/common.h>
 #include <ftn_solo_control/utils/utils.h>
 #include <rclcpp/rclcpp.hpp>
+
+#include <ftn_solo_control/motions/eef_linear_motion.h>
+
+template <class PosType, class PosTypeRef>
+class PieceWiseLinearWrapper
+    : public ftn_solo_control::PiecewiseLinearTrajectory<PosType, PosTypeRef> {
+public:
+  boost::python::tuple GetValues(double t) {
+    PosType pos = this->ZeroPosition();
+    Eigen::VectorXd vel = this->ZeroVelocity();
+    Eigen::VectorXd acc = this->ZeroVelocity();
+    this->Get(t, pos, vel, acc);
+    return boost::python::make_tuple(pos, vel, acc);
+  }
+};
+
+class SplineTrajectoryWrapper : public ftn_solo_control::SplineTrajectory {
+public:
+  SplineTrajectoryWrapper(bool follow_through = false)
+      : ftn_solo_control::SplineTrajectory(follow_through) {}
+  boost::python::tuple GetValues(double t) {
+    Eigen::VectorXd pos = this->ZeroPosition();
+    Eigen::VectorXd vel = this->ZeroVelocity();
+    Eigen::VectorXd acc = this->ZeroVelocity();
+    this->Get(t, pos, vel, acc);
+    return boost::python::make_tuple(pos, vel, acc);
+  }
+};
+
+typedef PieceWiseLinearWrapper<Eigen::VectorXd, ftn_solo_control::RefVectorXd>
+    PieceWiseLinearPositionWrapper;
+typedef PieceWiseLinearWrapper<Eigen::Matrix3d, ftn_solo_control::RefMatrix3d>
+    PieceWiseLinearRotationWrapper;
+
+typedef PieceWiseLinearWrapper<Eigen::Matrix3d, ftn_solo_control::RefMatrix3d>
+    PieceWiseLinearRotationWrapper;
 
 BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   namespace bp = boost::python;
@@ -46,11 +86,15 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("primal", &FrictionCone::primal_)
       .def_readonly("dual", &FrictionCone::dual_)
       .def("get_position", &FrictionCone::GetPosition);
+
   bp::class_<SimpleConvexCone>(
       "SimpleConvexCone",
       bp::init<double, ConstRefVector3d, double, ConstRefVector3d>())
       .def_readonly("face", &SimpleConvexCone::face_)
       .def_readonly("span", &SimpleConvexCone::span_);
+
+  bp::class_<std::map<size_t, FrictionCone>>("FrictionConeMap")
+      .def(bp::map_indexing_suite<std::map<size_t, FrictionCone>, true>());
 
   bp::class_<FixedPointsEstimator>(
       "FixedPointsEstimator",
@@ -60,6 +104,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def("estimate", &FixedPointsEstimator::Estimate)
       .def("un_fix", &FixedPointsEstimator::UnFix)
       .def("set_fixed", &FixedPointsEstimator::SetFixed)
+      .def("get_friction_cones", &FixedPointsEstimator::GetFrictionCones,
+           (bp::arg("mu") = 1.0, bp::arg("num_sides") = 4))
       .def_readonly("estimated_q", &FixedPointsEstimator::estimated_q_)
       .def_readonly("estimated_qv", &FixedPointsEstimator::estimated_qv_)
       .def_readonly("constraint", &FixedPointsEstimator::constraint_)
@@ -79,4 +125,58 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
           (bp::arg("cone"), bp::arg("ns_format_string") = "%1%_%2%",
            bp::arg("show_dual") = true, bp::arg("size") = 0.15),
           "Publishes the friction cone");
+
+  bp::class_<PieceWiseLinearPositionWrapper>("PieceWiseLinearPosition",
+                                             bp::init<>())
+      .def("add", &PieceWiseLinearPositionWrapper::AddPoint)
+      .def("get", &PieceWiseLinearPositionWrapper::GetValues)
+      .def("set_start", &PieceWiseLinearPositionWrapper::SetStart)
+      .def_readonly("finished", &PieceWiseLinearPositionWrapper::finished_)
+      .def("duration", &PieceWiseLinearPositionWrapper::Duration)
+      .def("start_time", &PieceWiseLinearPositionWrapper::StartTime)
+      .def("end_time", &PieceWiseLinearPositionWrapper::EndTime);
+
+  bp::class_<PieceWiseLinearRotationWrapper>("PieceWiseLinearRotation",
+                                             bp::init<>())
+      .def("add", &PieceWiseLinearRotationWrapper::AddPoint)
+      .def("get", &PieceWiseLinearRotationWrapper::GetValues)
+      .def("set_start", &PieceWiseLinearRotationWrapper::SetStart)
+      .def_readonly("finished", &PieceWiseLinearRotationWrapper::finished_)
+      .def("duration", &PieceWiseLinearRotationWrapper::Duration)
+      .def("start_time", &PieceWiseLinearRotationWrapper::StartTime)
+      .def("end_time", &PieceWiseLinearRotationWrapper::EndTime);
+
+  bp::class_<SplineTrajectoryWrapper>("SplineTrajectory", bp::init<bool>())
+      .def("add", &SplineTrajectoryWrapper::AddPoint)
+      .def("get", &SplineTrajectoryWrapper::GetValues)
+      .def("set_start", &SplineTrajectoryWrapper::SetStart)
+      .def_readonly("finished", &SplineTrajectoryWrapper::finished_)
+      .def("duration", &SplineTrajectoryWrapper::Duration)
+      .def("start_time", &SplineTrajectoryWrapper::StartTime)
+      .def("end_time", &SplineTrajectoryWrapper::EndTime);
+
+  class EEFLinearMotionWrapper : public EEFLinearMotion {
+  public:
+    using EEFLinearMotion::EEFLinearMotion;
+    void SetTrajectoryLinearPosition(
+        const std::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
+      EEFLinearMotion::SetTrajectory(trajectory);
+    }
+    void SetTrajectorySpline(
+        const std::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
+      EEFLinearMotion::SetTrajectory(trajectory);
+    }
+  };
+
+  bp::class_<EEFLinearMotionWrapper>(
+      "EEFLinearMotion", bp::init<size_t, ConstRefVector3b,
+                                  const pinocchio::SE3 &, double, double>())
+      .def("set_trajectory", &EEFLinearMotionWrapper::SetTrajectoryLinearPosition)
+      .def("set_trajectory", &EEFLinearMotionWrapper::SetTrajectorySpline)
+      .def("get_jacobian", &EEFLinearMotionWrapper::GetJacobian)
+      .def("get_desired_acceleration",
+           &EEFLinearMotionWrapper::GetDesiredAcceleration)
+      .def("get_acceleration", &EEFLinearMotionWrapper::GetAcceleration)
+      .def_readonly("dim", &EEFLinearMotionWrapper::dim_)
+      .def_readonly("trajectory", &EEFLinearMotionWrapper::trajectory_);
 }

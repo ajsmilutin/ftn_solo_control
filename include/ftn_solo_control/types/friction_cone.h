@@ -28,18 +28,18 @@ protected:
 
 class FrictionCone {
 public:
-  FrictionCone(double mu, size_t num_sides, const pinocchio::SE3 &pose);
+  FrictionCone(double mu=0.8, size_t num_sides=4, const pinocchio::SE3 &pose=pinocchio::SE3::Identity());
   SimpleConvexCone primal_;
   SimpleConvexCone dual_;
   inline size_t GetNum() const { return cone_num_; }
-  inline ConstRefVector3d GetPosition() const { return pose_.translation(); }
+  inline Eigen::Vector3d GetPosition() const { return pose_.translation(); }
 
 protected:
   static size_t total_cones_;
   double mu_;
   size_t num_sides_;
   size_t cone_num_;
-  pinocchio::SE3 pose_;
+  pinocchio::SE3 pose_;  
 };
 
 } // namespace ftn_solo_control

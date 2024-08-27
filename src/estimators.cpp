@@ -41,7 +41,7 @@ visualization_msgs::msg::Marker GetPointMarker(ConstRefVector3d position,
 
 void PublishMarkers(
     const std::unordered_map<size_t, pinocchio::SE3> &poses,
-    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses,
+    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
     const pinocchio::Data &data) {
   visualization_msgs::msg::MarkerArray all_markers;
   int i = 0;
@@ -50,10 +50,10 @@ void PublishMarkers(
   for (const auto &position : poses) {
     all_markers.markers.push_back(
         GetPointMarker(position.second.translation(), 300 + (++i)));
-    const auto &touching_pose = touching_poses.at(position.first);
+    const auto &touching_pose = touching_poses_.at(position.first);
     poses_msg.poses.push_back(ToPose(pinocchio::SE3(
-        touching_pose.rotation(),
-        data.oMf.at(position.first).translation() + touching_pose.translation())));
+        touching_pose.rotation(), data.oMf.at(position.first).translation() +
+                                      touching_pose.translation())));
   }
   if (pose_publisher) {
 
@@ -101,8 +101,8 @@ void FixedPointsEstimator::Init(ConstRefVectorXd q, ConstRefVectorXd qv,
   pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
   Eigen::Vector3d mean;
   for (size_t i = 0; i < indexes_.size(); ++i) {
-    const auto pose =
-        GetTouchingPose(model_, data_, indexes_.at(i), Eigen::Vector3d::UnitZ());
+    const auto pose = GetTouchingPose(model_, data_, indexes_.at(i),
+                                      Eigen::Vector3d::UnitZ());
     poses_.emplace(indexes_.at(i),
                    pinocchio::SE3(Eigen::Matrix3d::Identity(),
                                   data_.oMf.at(indexes_.at(i)).translation() +
@@ -146,7 +146,6 @@ void FixedPointsEstimator::SetFixed(size_t frame_index,
   const auto pose =
       GetTouchingPose(model_, data_, frame_index, new_orientation.col(2));
   new_pose.translation() += pose.translation();
-  new_pose.translation().z() -= 0.000;
   poses_[frame_index] = new_pose;
 }
 
@@ -163,18 +162,24 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
   pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
   pinocchio::computeJointJacobians(model_, data_, estimated_q_);
   std::unordered_map<size_t, pinocchio::SE3> placements;
-  std::unordered_map<size_t, pinocchio::SE3> touching_poses;
-  while (grad > 1e-6 && errors.norm() > 0.5e-5) {
+  touching_poses_ = {};
+
+  Eigen::Quaterniond qd = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3],
+                                             estimated_q_[4], estimated_q_[5]);
+  Eigen::Quaterniond q0;
+  size_t iteration = 0;
+  while (grad > 1e-6 && errors.norm() / num_constraints > 1e-4) {
     size_t i = 0;
     for (const auto &position : poses_) {
-      touching_poses[position.first] = GetTouchingPose(
+      touching_poses_[position.first] = GetTouchingPose(
           model_, data_, position.first, position.second.rotation().col(2));
-      errors.segment<3>(i * 3) = position.second.translation() -
-                                 (data_.oMf.at(position.first).translation() +
-                                  touching_poses.at(position.first).translation());
+      errors.segment<3>(i * 3) =
+          position.second.translation() -
+          (data_.oMf.at(position.first).translation() +
+           touching_poses_.at(position.first).translation());
       const auto &frame = model_.frames.at(position.first);
       placements[position.first] = GetTouchingPlacement(
-          model_, data_, position.first, touching_poses.at(position.first));
+          model_, data_, position.first, touching_poses_.at(position.first));
       constraint_.middleRows<3>(i * 3) =
           pinocchio::getFrameJacobian(
               model_, data_, frame.parentJoint, placements.at(position.first),
@@ -182,15 +187,28 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
               .topRows<3>();
       ++i;
     }
-    step.head<6>() = constraint_.leftCols<6>().householderQr().solve(errors);
+
+    Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 2, 6);
+    q0 = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3], estimated_q_[4],
+                            estimated_q_[5]);
+    double alpha = 0.05;
+    Eigen::Vector3d quat_err =
+        alpha * (q0.toRotationMatrix() *
+                 pinocchio::log3((q0.inverse() * qd).toRotationMatrix()));
+    J.block<2, 2>(0, 3) = alpha * Eigen::MatrixXd::Identity(2, 2);
+    J.bottomRows(num_constraints) = constraint_.leftCols<6>() / num_constraints;
+    Eigen::VectorXd vec(num_constraints + 2);
+    vec.head<2>() = quat_err.head<2>();
+    vec.tail(errors.size()) = errors / num_constraints;
+    step.head<6>() = J.householderQr().solve(vec);
     grad = step.head<6>().norm();
-    pinocchio::integrate(model_, estimated_q_, 0.75 * step, estimated_q_);
+    pinocchio::integrate(model_, estimated_q_, 0.5 * step, estimated_q_);
     pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
     pinocchio::computeJointJacobians(model_, data_, estimated_q_);
   }
-  PublishMarkers(poses_, touching_poses, data_);
+  PublishMarkers(poses_, touching_poses_, data_);
   EstimateVelocities(sensors);
-  UpdateInternals(touching_poses, placements);
+  UpdateInternals(touching_poses_, placements);
 }
 
 void FixedPointsEstimator::EstimateVelocities(const SensorData &sensors) {
@@ -213,7 +231,7 @@ void FixedPointsEstimator::EstimateVelocities(const SensorData &sensors) {
 }
 
 void FixedPointsEstimator::UpdateInternals(
-    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses,
+    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
     const std::unordered_map<size_t, pinocchio::SE3> &placements) {
   pinocchio::forwardKinematics(model_, data_, estimated_q_, estimated_qv_);
   pinocchio::updateFramePlacements(model_, data_);
@@ -225,10 +243,10 @@ void FixedPointsEstimator::UpdateInternals(
             model_, data_, position.first,
             pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED)
             .linear();
-    const double vel =
-        center_velocity.dot(touching_poses.at(position.first).rotation().col(0));
+    const double vel = center_velocity.dot(
+        touching_poses_.at(position.first).rotation().col(0));
     position.second.translation() +=
-        dt_ * vel * touching_poses.at(position.first).rotation().col(0);
+        dt_ * vel * touching_poses_.at(position.first).rotation().col(0);
     velocity_.segment<3>(3 * i) =
         pinocchio::getFrameVelocity(
             model_, data_, frame.parentJoint, placements.at(position.first),
@@ -241,6 +259,15 @@ void FixedPointsEstimator::UpdateInternals(
             .linear();
     ++i;
   }
+}
+
+std::map<size_t, FrictionCone>
+FixedPointsEstimator::GetFrictionCones(double mu, size_t num_sides) {
+  std::map<size_t, FrictionCone> result;
+  for (const auto &pose : poses_) {
+    result.emplace(pose.first, FrictionCone(mu, num_sides, pose.second));
+  }
+  return result;
 }
 
 } // namespace ftn_solo_control

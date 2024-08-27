@@ -50,12 +50,17 @@ include_directories(${visualization_msgs_INCLUDE_DIRS})
 
 # create the lib
 add_library(ftn_solo_control_py SHARED 
-src/types/friction_cone.cpp
-src/utils/conversions.cpp
-src/utils/visualization_utils.cpp
-src/utils/utils.cpp
-src/estimators.cpp
-src/bindings.cpp)
+  src/motions/eef_linear_motion.cpp
+  src/trajectories/piecewise_linear.cpp
+  src/trajectories/spline.cpp
+  src/types/geometric_path.cpp
+  src/types/piecewise_poly_path.cpp
+  src/types/friction_cone.cpp
+  src/utils/conversions.cpp
+  src/utils/visualization_utils.cpp
+  src/utils/utils.cpp
+  src/estimators.cpp
+  src/bindings.cpp)
 target_link_libraries(ftn_solo_control_py
                       ${Boost_LIBRARIES})
 ament_target_dependencies(ftn_solo_control_py rclcpp PythonLibs Eigen3 eigenpy visualization_msgs)

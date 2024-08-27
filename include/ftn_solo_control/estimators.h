@@ -5,6 +5,7 @@
 #include <pinocchio/multibody/model.hpp>
 // FTN includes
 #include <ftn_solo_control/types/common.h>
+#include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
 
 namespace ftn_solo_control {
@@ -22,6 +23,9 @@ public:
 
   void Estimate(double t, ConstRefVectorXd q, ConstRefVectorXd qv,
                 const SensorData &sensors);
+
+  std::map<size_t, FrictionCone> GetFrictionCones(double mu = 1,
+                                                  size_t num_sides = 4);
 
   Eigen::VectorXd estimated_q_;
   Eigen::VectorXd estimated_qv_;
@@ -43,6 +47,7 @@ protected:
   pinocchio::Data &data_;
   std::vector<size_t> indexes_;
   std::unordered_map<size_t, pinocchio::SE3> poses_;
+  std::unordered_map<size_t, pinocchio::SE3> touching_poses_;
   std::unordered_map<size_t, size_t> indexes_map_;
 };
 
