@@ -1,14 +1,20 @@
-#include <ftn_solo_control/motions/eef_linear_motion.h>
+#include <ftn_solo_control/motions/eef_position_motion.h>
 
 namespace ftn_solo_control {
 
-Eigen::VectorXd EEFLinearMotion::GetPositionError(const RefVectorXd pos,
+EEFPositionMotion::EEFPositionMotion(size_t eef_index, ConstRefVector3b selected,
+                                 const pinocchio::SE3 &origin_pose, double Kp,
+                                 double Kd)
+    : MotionWithTrajectory(selected, Kp, Kd), eef_index_(eef_index),
+      origin_(origin_pose) {}
+
+Eigen::VectorXd EEFPositionMotion::GetPositionError(const RefVectorXd pos,
                                                   const pinocchio::Model &model,
                                                   pinocchio::Data &data) const {
   return pos - origin_.actInv(data.oMf[eef_index_].translation())(indexes_);
 }
 
-Eigen::VectorXd EEFLinearMotion::GetVelocityError(const RefVectorXd vel,
+Eigen::VectorXd EEFPositionMotion::GetVelocityError(const RefVectorXd vel,
                                                   const pinocchio::Model &model,
                                                   pinocchio::Data &data) const {
 
@@ -19,7 +25,7 @@ Eigen::VectorXd EEFLinearMotion::GetVelocityError(const RefVectorXd vel,
                     .linear())(indexes_);
 }
 
-Eigen::MatrixXd EEFLinearMotion::GetJacobian(const pinocchio::Model &model,
+Eigen::MatrixXd EEFPositionMotion::GetJacobian(const pinocchio::Model &model,
                                              pinocchio::Data &data,
                                              ConstRefVectorXd q,
                                              ConstRefVectorXd qv) const {
@@ -31,7 +37,7 @@ Eigen::MatrixXd EEFLinearMotion::GetJacobian(const pinocchio::Model &model,
               .topRows<3>())(indexes_, Eigen::placeholders::all);
 }
 
-Eigen::VectorXd EEFLinearMotion::GetAcceleration(const pinocchio::Model &model,
+Eigen::VectorXd EEFPositionMotion::GetAcceleration(const pinocchio::Model &model,
                                                  pinocchio::Data &data) const {
   return (origin_.rotation().transpose() *
           pinocchio::getFrameAcceleration(

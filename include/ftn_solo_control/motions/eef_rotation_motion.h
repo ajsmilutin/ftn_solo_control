@@ -8,28 +8,13 @@
 #include <ftn_solo_control/types/common.h>
 
 namespace ftn_solo_control {
-class EEFLinearMotion
-    : public MotionWithTrajectory<Trajectory<Eigen::VectorXd, RefVectorXd,
+class EEFRotationMotion
+    : public MotionWithTrajectory<Trajectory<Eigen::Matrix3d, RefMatrix3d,
                                              Eigen::VectorXd, RefVectorXd>> {
 public:
-  EEFLinearMotion(
-      size_t eef_index, ConstRefVector3b selected,
-      const pinocchio::SE3 &origin_pose = pinocchio::SE3::Identity(),
-      double Kp = 100, double Kd = 50)
-      : MotionWithTrajectory(Kp, Kd), eef_index_(eef_index),
-        origin_(origin_pose) {
-    dim_ = selected.count();
-    indexes_ = Eigen::VectorXi(dim_);
-    size_t j = 0;
-    for (size_t i = 0; i < selected.size(); ++i) {
-      if (selected[i]) {
-        indexes_[j] = i;
-        ++j;
-      }
-    }
-  }
+  EEFRotationMotion(size_t eef_index, double Kp = 100, double Kd = 50);
 
-  Eigen::VectorXd GetPositionError(const RefVectorXd pos,
+  Eigen::VectorXd GetPositionError(const RefMatrix3d pos,
                                    const pinocchio::Model &model,
                                    pinocchio::Data &data) const override;
   virtual Eigen::VectorXd
@@ -45,8 +30,6 @@ public:
 
 protected:
   size_t eef_index_;
-  VectorXi indexes_;
-  const pinocchio::SE3 origin_;
 };
 
 } // namespace ftn_solo_control

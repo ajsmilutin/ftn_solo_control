@@ -50,7 +50,9 @@ include_directories(${visualization_msgs_INCLUDE_DIRS})
 
 # create the lib
 add_library(ftn_solo_control_py SHARED 
-  src/motions/eef_linear_motion.cpp
+  src/motions/eef_rotation_motion.cpp
+  src/motions/eef_position_motion.cpp
+  src/motions/com_motion.cpp
   src/trajectories/piecewise_linear.cpp
   src/trajectories/spline.cpp
   src/types/geometric_path.cpp

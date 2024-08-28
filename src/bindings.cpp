@@ -1,19 +1,22 @@
+
+#include <rclcpp/rclcpp.hpp>
+// FTN solo includes
 #include <ftn_solo_control/estimators.h>
+#include <ftn_solo_control/motions/com_motion.h>
+#include <ftn_solo_control/motions/eef_position_motion.h>
+#include <ftn_solo_control/motions/eef_rotation_motion.h>
 #include <ftn_solo_control/trajectories/piecewise_linear.h>
 #include <ftn_solo_control/trajectories/spline.h>
+#include <ftn_solo_control/types/common.h>
 #include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
+#include <ftn_solo_control/utils/utils.h>
 #include <ftn_solo_control/utils/visualization_utils.h>
-
+// Boost Python
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/map_indexing_suite.hpp>
 #include <eigenpy/eigen-from-python.hpp>
 #include <eigenpy/eigenpy.hpp>
-#include <ftn_solo_control/types/common.h>
-#include <ftn_solo_control/utils/utils.h>
-#include <rclcpp/rclcpp.hpp>
-
-#include <ftn_solo_control/motions/eef_linear_motion.h>
 
 template <class PosType, class PosTypeRef>
 class PieceWiseLinearWrapper
@@ -155,28 +158,75 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def("start_time", &SplineTrajectoryWrapper::StartTime)
       .def("end_time", &SplineTrajectoryWrapper::EndTime);
 
-  class EEFLinearMotionWrapper : public EEFLinearMotion {
+  class EEFPositionMotionWrapper : public EEFPositionMotion {
   public:
-    using EEFLinearMotion::EEFLinearMotion;
+    using EEFPositionMotion::EEFPositionMotion;
     void SetTrajectoryLinearPosition(
         const std::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
-      EEFLinearMotion::SetTrajectory(trajectory);
+      EEFPositionMotion::SetTrajectory(trajectory);
     }
     void SetTrajectorySpline(
         const std::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
-      EEFLinearMotion::SetTrajectory(trajectory);
+      EEFPositionMotion::SetTrajectory(trajectory);
     }
   };
 
-  bp::class_<EEFLinearMotionWrapper>(
-      "EEFLinearMotion", bp::init<size_t, ConstRefVector3b,
+  class EEFRotationMotionWrapper : public EEFRotationMotion {
+  public:
+    using EEFRotationMotion::EEFRotationMotion;
+    void SetTrajectoryLinearRotation(
+        const std::shared_ptr<PieceWiseLinearRotationWrapper> &trajectory) {
+      EEFRotationMotion::SetTrajectory(trajectory);
+    }
+  };
+
+  class COMMotionWrapper : public COMMotion {
+  public:
+    using COMMotion::COMMotion;
+    void SetTrajectoryLinearPosition(
+        const std::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
+      COMMotion::SetTrajectory(trajectory);
+    }
+    void SetTrajectorySpline(
+        const std::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
+      COMMotion::SetTrajectory(trajectory);
+    }
+  };
+
+  bp::class_<EEFPositionMotionWrapper>(
+      "EEFPositionMotion", bp::init<size_t, ConstRefVector3b,
                                   const pinocchio::SE3 &, double, double>())
-      .def("set_trajectory", &EEFLinearMotionWrapper::SetTrajectoryLinearPosition)
-      .def("set_trajectory", &EEFLinearMotionWrapper::SetTrajectorySpline)
-      .def("get_jacobian", &EEFLinearMotionWrapper::GetJacobian)
+      .def("set_trajectory",
+           &EEFPositionMotionWrapper::SetTrajectoryLinearPosition)
+      .def("set_trajectory", &EEFPositionMotionWrapper::SetTrajectorySpline)
+      .def("get_jacobian", &EEFPositionMotionWrapper::GetJacobian)
       .def("get_desired_acceleration",
-           &EEFLinearMotionWrapper::GetDesiredAcceleration)
-      .def("get_acceleration", &EEFLinearMotionWrapper::GetAcceleration)
-      .def_readonly("dim", &EEFLinearMotionWrapper::dim_)
-      .def_readonly("trajectory", &EEFLinearMotionWrapper::trajectory_);
+           &EEFPositionMotionWrapper::GetDesiredAcceleration)
+      .def("get_acceleration", &EEFPositionMotionWrapper::GetAcceleration)
+      .def_readonly("dim", &EEFPositionMotionWrapper::dim_)
+      .def_readonly("trajectory", &EEFPositionMotionWrapper::trajectory_);
+
+  bp::class_<EEFRotationMotionWrapper>(
+      "EEFRotationMotion", bp::init<size_t, double, double>())
+      .def("set_trajectory",
+           &EEFRotationMotionWrapper::SetTrajectoryLinearRotation)
+      .def("get_jacobian", &EEFRotationMotionWrapper::GetJacobian)
+      .def("get_desired_acceleration",
+           &EEFRotationMotionWrapper::GetDesiredAcceleration)
+      .def("get_acceleration", &EEFRotationMotionWrapper::GetAcceleration)
+      .def_readonly("dim", &EEFRotationMotionWrapper::dim_)
+      .def_readonly("trajectory", &EEFRotationMotionWrapper::trajectory_);
+
+  bp::class_<COMMotionWrapper>(
+      "COMMotion", bp::init<ConstRefVector3b,
+                                  const pinocchio::SE3 &, double, double>())
+      .def("set_trajectory",
+           &COMMotionWrapper::SetTrajectoryLinearPosition)
+      .def("set_trajectory", &COMMotionWrapper::SetTrajectorySpline)
+      .def("get_jacobian", &COMMotionWrapper::GetJacobian)
+      .def("get_desired_acceleration",
+           &COMMotionWrapper::GetDesiredAcceleration)
+      .def("get_acceleration", &COMMotionWrapper::GetAcceleration)
+      .def_readonly("dim", &COMMotionWrapper::dim_)
+      .def_readonly("trajectory", &COMMotionWrapper::trajectory_);
 }

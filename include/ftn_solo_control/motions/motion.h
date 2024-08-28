@@ -26,8 +26,19 @@ protected:
 
 template <class Trajectory> class MotionWithTrajectory : public Motion {
 public:
-  MotionWithTrajectory(double Kp = 100, double Kd = 50)
-      : Motion(Kp, Kd), trajectory_(nullptr) {}
+  MotionWithTrajectory(ConstRefVector3b selected, double Kp = 100,
+                       double Kd = 50)
+      : Motion(Kp, Kd), trajectory_(nullptr) {
+    dim_ = selected.count();
+    indexes_ = Eigen::VectorXi(dim_);
+    size_t j = 0;
+    for (size_t i = 0; i < selected.size(); ++i) {
+      if (selected[i]) {
+        indexes_[j] = i;
+        ++j;
+      }
+    }
+  }
 
   virtual Eigen::VectorXd
   GetPositionError(const Trajectory::PositionTypeRef pos,
@@ -63,6 +74,7 @@ public:
   }
 
   std::shared_ptr<Trajectory> trajectory_;
+  VectorXi indexes_;
 };
 
 } // namespace ftn_solo_control
