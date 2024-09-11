@@ -14,9 +14,28 @@ class Motion {
 public:
   Motion(double Kp = 100, double Kd = 50) : Kp_(Kp), Kd_(Kd) {}
 
-  virtual Eigen::VectorXd
-  GetDesiredAcceleration(double t, const pinocchio::Model &model,
-                         pinocchio::Data &data) const = 0;
+  virtual Eigen::VectorXd GetDesiredAcceleration(double t,
+                                                 const pinocchio::Model &model,
+                                                 pinocchio::Data &data) const {
+    return Eigen::VectorXd::Zero(dim_);
+  }
+
+  virtual Eigen::MatrixXd GetJacobian(const pinocchio::Model &model,
+                                      pinocchio::Data &data, ConstRefVectorXd q,
+                                      ConstRefVectorXd qv) const {
+    return Eigen::MatrixXd::Zero(dim_, model.nv);
+  }
+
+  virtual Eigen::VectorXd GetAcceleration(const pinocchio::Model &model,
+                                          pinocchio::Data &data) const {
+    return Eigen::MatrixXd::Zero(dim_, model.nv);
+  };
+
+  virtual Eigen::VectorXd GetPositionErrorToEnd(const pinocchio::Model &model,
+                                                pinocchio::Data &data) const {
+    return Eigen::MatrixXd::Zero(dim_, model.nv);
+  }
+
   size_t dim_;
 
 protected:
@@ -50,10 +69,6 @@ public:
                    const pinocchio::Model &model,
                    pinocchio::Data &data) const = 0;
 
-  virtual Eigen::MatrixXd GetJacobian(const pinocchio::Model &model,
-                                      pinocchio::Data &data, ConstRefVectorXd q,
-                                      ConstRefVectorXd qv) const = 0;
-
   Eigen::VectorXd GetDesiredAcceleration(double t,
                                          const pinocchio::Model &model,
                                          pinocchio::Data &data) const {
@@ -66,14 +81,19 @@ public:
            Kd_ * GetVelocityError(vel, model, data);
   }
 
-  virtual Eigen::VectorXd GetAcceleration(const pinocchio::Model &model,
-                                          pinocchio::Data &data) const = 0;
-
-  void SetTrajectory(const std::shared_ptr<Trajectory> trajectory) {
+  void SetTrajectory(const boost::shared_ptr<Trajectory> trajectory) {
     trajectory_ = trajectory;
   }
 
-  std::shared_ptr<Trajectory> trajectory_;
+  Eigen::VectorXd GetPositionErrorToEnd(const pinocchio::Model &model,
+                                        pinocchio::Data &data) const {
+    auto final_position = trajectory_->FinalPosition();
+    return GetPositionError(final_position, model, data);
+  }
+
+  boost::shared_ptr<Trajectory> trajectory_;
+
+protected:
   VectorXi indexes_;
 };
 

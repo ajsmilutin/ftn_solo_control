@@ -24,14 +24,20 @@ public:
   void Estimate(double t, ConstRefVectorXd q, ConstRefVectorXd qv,
                 const SensorData &sensors);
 
-  std::map<size_t, FrictionCone> GetFrictionCones(double mu = 1,
-                                                  size_t num_sides = 4);
+  FrictionConeMap GetFrictionCones(double mu = 1, size_t num_sides = 4);
+
+  inline size_t NumJoints() const { return num_joints_; }
+  inline size_t NumDoF() const { return model_.nv; }
+  inline size_t NumContacts() const { return poses_.size(); }
 
   Eigen::VectorXd estimated_q_;
   Eigen::VectorXd estimated_qv_;
   Eigen::MatrixXd constraint_;
+  Eigen::VectorXd eef_positions_;
   Eigen::VectorXd velocity_;
   Eigen::VectorXd acceleration_;
+
+  inline const std::vector<size_t> &GetContactPoints() const { return indexes_; }
 
 protected:
   void SetData(ConstRefVectorXd q, ConstRefVectorXd qv,

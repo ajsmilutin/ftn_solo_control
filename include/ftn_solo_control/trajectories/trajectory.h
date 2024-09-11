@@ -66,16 +66,15 @@ public:
 
   virtual PosType ZeroPosition() const = 0;
   virtual VelType ZeroVelocity() const = 0;
+  inline PosType FinalPosition() const { return points_.back(); }
 
 protected:
   virtual void StartPoint(double t, PosTypeRef pos, VelTypeRef val,
                           VelTypeRef acc) const = 0;
   virtual void EndPoint(double t, PosTypeRef pos, VelTypeRef al,
-                        VelTypeRef acc) const = 0;
+                      VelTypeRef acc) const = 0;
   virtual void Interpolated(double t, PosTypeRef pos, VelTypeRef val,
                             VelTypeRef acc) const = 0;
-
-protected:
   bool loop_;
   std::vector<PosType, Eigen::aligned_allocator<PosType>> points_;
   std::vector<double> times_;

@@ -30,9 +30,9 @@ void SplineTrajectory::StartPoint(double t, RefVectorXd pos, RefVectorXd vel,
 void SplineTrajectory::EndPoint(double t, RefVectorXd pos, RefVectorXd vel,
                                 RefVectorXd acc) const {
   if (follow_through_) {
-    pos = cubic_spline_.EvalSingle(t, 0);
-    vel = cubic_spline_.EvalSingle(t, 1);
-    acc = cubic_spline_.EvalSingle(t, 2);
+    vel = cubic_spline_.EvalSingle(times_.back(), 1);
+    pos = points_.back() + vel * (t-times_.back());
+    acc = ZeroVelocity();
   } else {
     pos = this->points_.back();
     vel = ZeroVelocity();

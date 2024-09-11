@@ -24,6 +24,7 @@ typedef Eigen::Ref<Eigen::Matrix<int, Eigen::Dynamic, 1>> RefVectorXi;
 typedef Eigen::Ref<Eigen::Matrix<long, Eigen::Dynamic, 1>> RefVectorXl;
 typedef Eigen::Ref<Eigen::Matrix<bool, Eigen::Dynamic, 1>> RefVectorXb;
 typedef Eigen::Ref<Eigen::Matrix<double, Eigen::Dynamic, 1>> RefVectorXd;
+typedef Eigen::Ref<Eigen::Vector2d> RefVector2d;
 typedef Eigen::Ref<Eigen::Vector3d> RefVector3d;
 typedef Eigen::Ref<Eigen::Vector4d> RefVector4d;
 typedef Eigen::Ref<Eigen::Matrix3d> RefMatrix3d;
@@ -37,6 +38,7 @@ typedef const Eigen::Ref<const Eigen::Matrix<bool, Eigen::Dynamic, 1>>
     ConstRefVectorXb;
 typedef const Eigen::Ref<const Eigen::Matrix<double, Eigen::Dynamic, 1>>
     ConstRefVectorXd;
+typedef const Eigen::Ref<const Eigen::Vector2d> ConstRefVector2d;
 typedef const Eigen::Ref<const Eigen::Vector3d> ConstRefVector3d;
 typedef const Eigen::Ref<const Eigen::Vector4d> ConstRefVector4d;
 typedef const Eigen::Ref<const Vector3b> ConstRefVector3b;

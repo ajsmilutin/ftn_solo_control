@@ -11,7 +11,7 @@ size_t FrictionCone::total_cones_ = 0;
 SimpleConvexCone::SimpleConvexCone(size_t num_sides, ConstRefVector3d vector,
                                    double start_angle,
                                    ConstRefVector3d translation)
-    : num_sides_(num_sides), translation_(translation){  
+    : num_sides_(num_sides), translation_(translation) {
   face_ = Eigen::MatrixXd(num_sides, 3);
   span_ = Eigen::MatrixXd(3, num_sides);
   double angle = 2 * M_PI / num_sides;
@@ -39,7 +39,7 @@ void SimpleConvexCone::Rotate(ConstRefMatrixXd rot) {
 
 FrictionCone::FrictionCone(double mu, size_t num_sides,
                            const pinocchio::SE3 &pose)
-    : mu_(mu), num_sides_(num_sides), cone_num_(total_cones_++)  {
+    : mu_(mu), num_sides_(num_sides), cone_num_(total_cones_++) {
   pose_ = pose;
   Eigen::Vector3d vector(mu, 0, 1);
   primal_ = SimpleConvexCone(num_sides_, vector, 0, pose.translation());
@@ -49,6 +49,12 @@ FrictionCone::FrictionCone(double mu, size_t num_sides,
   dual_.Rotate(pose.rotation().matrix());
 }
 
-
+size_t GetTotalSides(const FrictionConeMap &friction_cones) {
+  size_t result = 0;
+  for (const auto &cone : friction_cones) {
+    result += cone.second.GetNumSides();
+  }
+  return result;
+}
 
 } // namespace ftn_solo_control

@@ -81,6 +81,7 @@ FixedPointsEstimator::FixedPointsEstimator(double dt,
                                            const std::vector<size_t> &indexes)
     : dt_(dt), model_(model), data_(data), indexes_(indexes) {
   num_joints_ = model_.nv - 6;
+
   estimated_q_ = Eigen::VectorXd::Zero(model_.nq);
   estimated_qv_ = Eigen::VectorXd::Zero(model_.nv);
   rclcpp::Node node = rclcpp::Node("my_node");
@@ -156,7 +157,8 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
   double grad = 1;
   size_t num_constraints = poses_.size() * 3;
   constraint_ = Eigen::MatrixXd::Zero(num_constraints, model_.nv);
-  acceleration_ = velocity_ = Eigen::VectorXd::Zero(num_constraints);
+  eef_positions_ = acceleration_ = velocity_ =
+      Eigen::VectorXd::Zero(num_constraints);
   Eigen::VectorXd errors = Eigen::VectorXd::Ones(num_constraints);
   Eigen::VectorXd step = Eigen::VectorXd::Zero(model_.nv);
   pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
@@ -167,27 +169,18 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
   Eigen::Quaterniond qd = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3],
                                              estimated_q_[4], estimated_q_[5]);
   Eigen::Quaterniond q0;
-  size_t iteration = 0;
+  Eigen::MatrixXd c2 = constraint_;
   while (grad > 1e-6 && errors.norm() / num_constraints > 1e-4) {
     size_t i = 0;
+    GetConstraintJacobian(model_, data_, poses_, constraint_, &touching_poses_,
+                          &placements);
     for (const auto &position : poses_) {
-      touching_poses_[position.first] = GetTouchingPose(
-          model_, data_, position.first, position.second.rotation().col(2));
       errors.segment<3>(i * 3) =
           position.second.translation() -
           (data_.oMf.at(position.first).translation() +
            touching_poses_.at(position.first).translation());
-      const auto &frame = model_.frames.at(position.first);
-      placements[position.first] = GetTouchingPlacement(
-          model_, data_, position.first, touching_poses_.at(position.first));
-      constraint_.middleRows<3>(i * 3) =
-          pinocchio::getFrameJacobian(
-              model_, data_, frame.parentJoint, placements.at(position.first),
-              pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED)
-              .topRows<3>();
       ++i;
     }
-
     Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 2, 6);
     q0 = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3], estimated_q_[4],
                             estimated_q_[5]);
@@ -206,6 +199,7 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
     pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
     pinocchio::computeJointJacobians(model_, data_, estimated_q_);
   }
+  GetConstraintJacobian(model_, data_, poses_, constraint_, &touching_poses_);
   PublishMarkers(poses_, touching_poses_, data_);
   EstimateVelocities(sensors);
   UpdateInternals(touching_poses_, placements);
@@ -233,7 +227,8 @@ void FixedPointsEstimator::EstimateVelocities(const SensorData &sensors) {
 void FixedPointsEstimator::UpdateInternals(
     const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
     const std::unordered_map<size_t, pinocchio::SE3> &placements) {
-  pinocchio::forwardKinematics(model_, data_, estimated_q_, estimated_qv_);
+  pinocchio::forwardKinematics(model_, data_, estimated_q_, estimated_qv_,
+                               0 * estimated_qv_);
   pinocchio::updateFramePlacements(model_, data_);
   size_t i = 0;
   for (auto &position : poses_) {
@@ -245,6 +240,9 @@ void FixedPointsEstimator::UpdateInternals(
             .linear();
     const double vel = center_velocity.dot(
         touching_poses_.at(position.first).rotation().col(0));
+    eef_positions_.segment<3>(3 * i) =
+        (data_.oMf.at(position.first).translation() +
+         touching_poses_.at(position.first).translation());
     position.second.translation() +=
         dt_ * vel * touching_poses_.at(position.first).rotation().col(0);
     velocity_.segment<3>(3 * i) =
@@ -261,9 +259,9 @@ void FixedPointsEstimator::UpdateInternals(
   }
 }
 
-std::map<size_t, FrictionCone>
-FixedPointsEstimator::GetFrictionCones(double mu, size_t num_sides) {
-  std::map<size_t, FrictionCone> result;
+FrictionConeMap FixedPointsEstimator::GetFrictionCones(double mu,
+                                                       size_t num_sides) {
+  FrictionConeMap result;
   for (const auto &pose : poses_) {
     result.emplace(pose.first, FrictionCone(mu, num_sides, pose.second));
   }

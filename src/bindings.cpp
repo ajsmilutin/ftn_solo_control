@@ -1,26 +1,35 @@
 
 #include <rclcpp/rclcpp.hpp>
 // FTN solo includes
+#include <ftn_solo_control/controllers/whole_body.h>
 #include <ftn_solo_control/estimators.h>
 #include <ftn_solo_control/motions/com_motion.h>
 #include <ftn_solo_control/motions/eef_position_motion.h>
 #include <ftn_solo_control/motions/eef_rotation_motion.h>
+#include <ftn_solo_control/motions/solver.h>
 #include <ftn_solo_control/trajectories/piecewise_linear.h>
 #include <ftn_solo_control/trajectories/spline.h>
 #include <ftn_solo_control/types/common.h>
+#include <ftn_solo_control/types/convex_hull_2d.h>
 #include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
 #include <ftn_solo_control/utils/utils.h>
 #include <ftn_solo_control/utils/visualization_utils.h>
+#include <ftn_solo_control/utils/wcm.h>
+
 // Boost Python
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/map_indexing_suite.hpp>
+#include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 #include <eigenpy/eigen-from-python.hpp>
 #include <eigenpy/eigenpy.hpp>
 
+using namespace ftn_solo_control;
+
+namespace {
 template <class PosType, class PosTypeRef>
 class PieceWiseLinearWrapper
-    : public ftn_solo_control::PiecewiseLinearTrajectory<PosType, PosTypeRef> {
+    : public PiecewiseLinearTrajectory<PosType, PosTypeRef> {
 public:
   boost::python::tuple GetValues(double t) {
     PosType pos = this->ZeroPosition();
@@ -31,10 +40,10 @@ public:
   }
 };
 
-class SplineTrajectoryWrapper : public ftn_solo_control::SplineTrajectory {
+class SplineTrajectoryWrapper : public SplineTrajectory {
 public:
   SplineTrajectoryWrapper(bool follow_through = false)
-      : ftn_solo_control::SplineTrajectory(follow_through) {}
+      : SplineTrajectory(follow_through) {}
   boost::python::tuple GetValues(double t) {
     Eigen::VectorXd pos = this->ZeroPosition();
     Eigen::VectorXd vel = this->ZeroVelocity();
@@ -44,17 +53,30 @@ public:
   }
 };
 
-typedef PieceWiseLinearWrapper<Eigen::VectorXd, ftn_solo_control::RefVectorXd>
+Eigen::MatrixXd get_contact_jacobian_proxy(const pinocchio::Model &model,
+                                           pinocchio::Data &data,
+                                           size_t eef_index,
+                                           const FrictionCone &friction_cone) {
+  return GetContactJacobian(model, data, eef_index, friction_cone.GetPose());
+}
+
+typedef PieceWiseLinearWrapper<Eigen::VectorXd, RefVectorXd>
     PieceWiseLinearPositionWrapper;
-typedef PieceWiseLinearWrapper<Eigen::Matrix3d, ftn_solo_control::RefMatrix3d>
+typedef PieceWiseLinearWrapper<Eigen::Matrix3d, RefMatrix3d>
     PieceWiseLinearRotationWrapper;
 
-typedef PieceWiseLinearWrapper<Eigen::Matrix3d, ftn_solo_control::RefMatrix3d>
+typedef PieceWiseLinearWrapper<Eigen::Matrix3d, RefMatrix3d>
     PieceWiseLinearRotationWrapper;
+
+ConvexHull2D get_projected_wcm_proxy(const FrictionConeMap &friction_cones) {
+  return GetProjectedWCM(friction_cones);
+}
+
+} // namespace
 
 BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   namespace bp = boost::python;
-  using namespace ftn_solo_control;
+
   Py_Initialize();
   int wargc = 0;
   wchar_t **wargv;
@@ -88,7 +110,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
                            bp::init<double, size_t, pinocchio::SE3>())
       .def_readonly("primal", &FrictionCone::primal_)
       .def_readonly("dual", &FrictionCone::dual_)
-      .def("get_position", &FrictionCone::GetPosition);
+      .def("get_position", &FrictionCone::GetPosition)
+      .def("get_num_sides", &FrictionCone::GetNumSides);
 
   bp::class_<SimpleConvexCone>(
       "SimpleConvexCone",
@@ -96,8 +119,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("face", &SimpleConvexCone::face_)
       .def_readonly("span", &SimpleConvexCone::span_);
 
-  bp::class_<std::map<size_t, FrictionCone>>("FrictionConeMap")
-      .def(bp::map_indexing_suite<std::map<size_t, FrictionCone>, true>());
+  bp::class_<FrictionConeMap>("FrictionConeMap")
+      .def(bp::map_indexing_suite<FrictionConeMap, true>());
 
   bp::class_<FixedPointsEstimator>(
       "FixedPointsEstimator",
@@ -162,11 +185,11 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   public:
     using EEFPositionMotion::EEFPositionMotion;
     void SetTrajectoryLinearPosition(
-        const std::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
+        const boost::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
       EEFPositionMotion::SetTrajectory(trajectory);
     }
     void SetTrajectorySpline(
-        const std::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
+        const boost::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
       EEFPositionMotion::SetTrajectory(trajectory);
     }
   };
@@ -175,7 +198,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   public:
     using EEFRotationMotion::EEFRotationMotion;
     void SetTrajectoryLinearRotation(
-        const std::shared_ptr<PieceWiseLinearRotationWrapper> &trajectory) {
+        const boost::shared_ptr<PieceWiseLinearRotationWrapper> &trajectory) {
       EEFRotationMotion::SetTrajectory(trajectory);
     }
   };
@@ -184,18 +207,19 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   public:
     using COMMotion::COMMotion;
     void SetTrajectoryLinearPosition(
-        const std::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
+        const boost::shared_ptr<PieceWiseLinearPositionWrapper> &trajectory) {
       COMMotion::SetTrajectory(trajectory);
     }
     void SetTrajectorySpline(
-        const std::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
+        const boost::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
       COMMotion::SetTrajectory(trajectory);
     }
   };
 
-  bp::class_<EEFPositionMotionWrapper>(
+  bp::class_<Motion>("motion", bp::init<double, double>());
+  bp::class_<EEFPositionMotionWrapper, bp::bases<Motion>>(
       "EEFPositionMotion", bp::init<size_t, ConstRefVector3b,
-                                  const pinocchio::SE3 &, double, double>())
+                                    const pinocchio::SE3 &, double, double>())
       .def("set_trajectory",
            &EEFPositionMotionWrapper::SetTrajectoryLinearPosition)
       .def("set_trajectory", &EEFPositionMotionWrapper::SetTrajectorySpline)
@@ -206,7 +230,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("dim", &EEFPositionMotionWrapper::dim_)
       .def_readonly("trajectory", &EEFPositionMotionWrapper::trajectory_);
 
-  bp::class_<EEFRotationMotionWrapper>(
+  bp::class_<EEFRotationMotionWrapper, bp::bases<Motion>>(
       "EEFRotationMotion", bp::init<size_t, double, double>())
       .def("set_trajectory",
            &EEFRotationMotionWrapper::SetTrajectoryLinearRotation)
@@ -217,11 +241,10 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("dim", &EEFRotationMotionWrapper::dim_)
       .def_readonly("trajectory", &EEFRotationMotionWrapper::trajectory_);
 
-  bp::class_<COMMotionWrapper>(
-      "COMMotion", bp::init<ConstRefVector3b,
-                                  const pinocchio::SE3 &, double, double>())
-      .def("set_trajectory",
-           &COMMotionWrapper::SetTrajectoryLinearPosition)
+  bp::class_<COMMotionWrapper, bp::bases<Motion>>(
+      "COMMotion",
+      bp::init<ConstRefVector3b, const pinocchio::SE3 &, double, double>())
+      .def("set_trajectory", &COMMotionWrapper::SetTrajectoryLinearPosition)
       .def("set_trajectory", &COMMotionWrapper::SetTrajectorySpline)
       .def("get_jacobian", &COMMotionWrapper::GetJacobian)
       .def("get_desired_acceleration",
@@ -229,4 +252,45 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def("get_acceleration", &COMMotionWrapper::GetAcceleration)
       .def_readonly("dim", &COMMotionWrapper::dim_)
       .def_readonly("trajectory", &COMMotionWrapper::trajectory_);
+
+  bp::class_<std::vector<boost::shared_ptr<Motion>>>("MotionsVector")
+      .def(bp::vector_indexing_suite<std::vector<boost::shared_ptr<Motion>>,
+                                     true>());
+
+  bp::register_ptr_to_python<boost::shared_ptr<EEFPositionMotionWrapper>>();
+  bp::register_ptr_to_python<boost::shared_ptr<EEFRotationMotionWrapper>>();
+  bp::register_ptr_to_python<boost::shared_ptr<COMMotionWrapper>>();
+
+  bp::class_<WholeBodyController>(
+      "WholeBodyController",
+      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double>())
+      .def("compute", &WholeBodyController::Compute);
+
+  bp::def("get_end_of_motion", &GetEndOfMotion,
+          (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
+           bp::arg("motions"), bp::arg("q")),
+          "Computes robot pose at the end of motion");
+
+  bp::def("get_contact_jacobian", &get_contact_jacobian_proxy,
+          (bp::arg("model"), bp::arg("data"), bp::arg("eef_index"),
+           bp::arg("friction_cone")),
+          "Computes contact jacobian for eef");
+
+  bp::class_<std::vector<Eigen::Vector2d>>("PointsVector")
+      .def(bp::vector_indexing_suite<std::vector<Eigen::Vector2d>, true>());
+
+  bp::class_<ConvexHull2D>("ConvexHull2D",
+                           bp::init<std::vector<Eigen::Vector2d>>())
+      .def_readonly("points", &ConvexHull2D::points_)
+      .def("equations", &ConvexHull2D::Equations)
+      .def("area", &ConvexHull2D::Area);
+  bp::def("intersect", &Intersect,
+          (bp::arg("convex_hull_1"), bp::arg("convex_hull_2")),
+          "Intersects two convex hulls");
+
+  bp::def("get_projected_wcm", &get_projected_wcm_proxy, (bp::arg("friction_cones")),
+          "Computes projected WCM");
+
+  bp::def("get_projected_wcm_with_torque", &GetProjectedWCMWithTorque,
+          (bp::arg("friction_cones")), "Computes projected WCM");
 }
