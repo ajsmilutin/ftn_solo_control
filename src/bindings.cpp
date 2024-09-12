@@ -96,6 +96,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   InitVisualizationPublisher();
   InitEstimatorPublisher();
+  InintWholeBodyPublisher();
 
   bp::class_<ImuData>("ImuData", bp::init())
       .def_readwrite("angular_velocity", &ImuData::angular_velocity)
@@ -264,7 +265,9 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   bp::class_<WholeBodyController>(
       "WholeBodyController",
       bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double>())
-      .def("compute", &WholeBodyController::Compute);
+      .def("compute", &WholeBodyController::ComputeWithoutLimits)
+      .def("compute_with_limits", &WholeBodyController::Compute)
+      .def("get_force", &WholeBodyController::GetForce);
 
   bp::def("get_end_of_motion", &GetEndOfMotion,
           (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
@@ -288,8 +291,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
           (bp::arg("convex_hull_1"), bp::arg("convex_hull_2")),
           "Intersects two convex hulls");
 
-  bp::def("get_projected_wcm", &get_projected_wcm_proxy, (bp::arg("friction_cones")),
-          "Computes projected WCM");
+  bp::def("get_projected_wcm", &get_projected_wcm_proxy,
+          (bp::arg("friction_cones")), "Computes projected WCM");
 
   bp::def("get_projected_wcm_with_torque", &GetProjectedWCMWithTorque,
           (bp::arg("friction_cones")), "Computes projected WCM");

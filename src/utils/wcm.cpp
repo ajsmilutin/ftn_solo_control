@@ -27,7 +27,13 @@ void ExpandSurface(std::vector<Eigen::Vector2d> &result, ConstRefVector2d pt_0,
     ExpandSurface(result, pt_0, pt_mid, qp, g);
     ExpandSurface(result, pt_mid, pt_1, qp, g);
   } else {
-    result.push_back(pt_0);
+    if (result.empty()) {
+      result.push_back(pt_0);
+    } else if ((pt_0 - result.back()).norm() > 1e-4) {
+      std::cout << "RESSS " << pt_0 << " " << result.back() << " BBBBBBBBB"
+                << (pt_0 - result.back()).norm() << std::endl;
+      result.push_back(pt_0);
+    }
   }
 }
 

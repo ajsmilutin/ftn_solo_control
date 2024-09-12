@@ -23,6 +23,9 @@ static rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
 static rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr
     pose_publisher;
 
+static size_t index = 0;
+constexpr size_t publish_on = 12;
+
 visualization_msgs::msg::Marker GetPointMarker(ConstRefVector3d position,
                                                int id) {
   visualization_msgs::msg::Marker marker;
@@ -42,7 +45,10 @@ visualization_msgs::msg::Marker GetPointMarker(ConstRefVector3d position,
 void PublishMarkers(
     const std::unordered_map<size_t, pinocchio::SE3> &poses,
     const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
-    const pinocchio::Data &data) {
+    const pinocchio::Data &data) {  
+  if ((++index) % 50 != publish_on)      {
+    return;
+  }
   visualization_msgs::msg::MarkerArray all_markers;
   int i = 0;
   geometry_msgs::msg::PoseArray poses_msg;
@@ -56,7 +62,6 @@ void PublishMarkers(
                                       touching_pose.translation())));
   }
   if (pose_publisher) {
-
     pose_publisher->publish(poses_msg);
   }
   if (publisher) {
@@ -232,6 +237,7 @@ void FixedPointsEstimator::UpdateInternals(
   pinocchio::updateFramePlacements(model_, data_);
   size_t i = 0;
   for (auto &position : poses_) {
+    std::cout<<"ESTIMATOR "<<position.first << std::endl;
     const auto &frame = model_.frames.at(position.first);
     const Eigen::Vector3d center_velocity =
         pinocchio::getFrameVelocity(

@@ -75,7 +75,14 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
     }
     points_2 = std::move(new_points);
   }
-  return ConvexHull2D(points_2);
+  std::vector<Eigen::Vector2d> clean_points;
+  clean_points.push_back(points_2.front());
+  for (const auto &pt : points_2) {
+    if ((pt-clean_points.back()).norm()>1e-4){
+      clean_points.push_back(pt);
+    }
+  }
+  return ConvexHull2D(clean_points);
 }
 
 double ConvexHull2D::Area() {
