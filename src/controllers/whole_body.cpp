@@ -35,7 +35,7 @@ void InintWholeBodyPublisher() {
 
 WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
                                          const FrictionConeMap &friction_cones,
-                                         double max_torque)
+                                         double max_torque, size_t eef)
     : max_torque_(max_torque),
       qp_(estimator.NumJoints() + estimator.NumDoF() +
               estimator.NumContacts() * 3,
@@ -47,53 +47,47 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(qp_.model.n_in, qp_.model.dim);
   size_t start_row = 0;
   size_t start_col = estimator.NumDoF() + estimator.NumJoints();
-  d_ = 0.1 * Eigen::VectorXd::Ones(qp_.model.n_in);
+  Eigen::VectorXd d = 0.1 * Eigen::VectorXd::Ones(qp_.model.n_in);
   H_ = 0.001 * Eigen::MatrixXd::Identity(qp_.model.dim, qp_.model.dim);
-  double lambda_tangential = 0.1;
-  std::cout<<"CCCCCCCCCCCC";
+  double lambda_tangential = 0.01;
   for (const auto &cone : friction_cones) {
     eefs_.push_back(cone.first);
-    std::cout<<" "<<cone.first<< std::endl;
     forces_.emplace(cone.first, Eigen::Vector3d::Zero());
     C.block(start_row, start_col, cone.second.GetNumSides(), 3) =
         cone.second.primal_.face_;
     start_row += cone.second.GetNumSides();
     C.block<1, 3>(start_row, start_col) =
         cone.second.GetPose().rotation().col(2).transpose();
-    eef_to_row_[cone.first] = start_row;
-    H_.block<3, 3>(start_col, start_col) =
-        lambda_tangential *
-        cone.second.GetPose().rotation().bottomRows<2>().transpose() *
-        cone.second.GetPose().rotation().bottomRows<2>();
+    d(start_row) = 0.25;
+    if (eef != cone.first) {
+      H_.block<3, 3>(start_col, start_col) =
+          lambda_tangential *
+          cone.second.GetPose().rotation().bottomRows<2>().transpose() *
+          cone.second.GetPose().rotation().bottomRows<2>();
+    } else {
+      H_.block<3, 3>(start_col, start_col) = 0.1 * Eigen::Matrix3d::Identity();
+    }
+
     ++start_row;
     start_col += 3;
   }
-  std::cout<<std::endl;
-  std::cout<<"ESTIMATOR "<< std::endl;
-  for (const auto pt: estimator.GetContactPoints()){
-    std::cout<<" "<< pt;
-  }
-  std::cout<<std::endl;
-
   C.block(start_row, estimator.NumDoF(), estimator.NumJoints(),
           estimator.NumJoints()) =
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
-  d_.tail(estimator.NumJoints()) =
+  d.tail(estimator.NumJoints()) =
       -max_torque_ * Eigen::VectorXd::Ones(estimator.NumJoints());
   Eigen::VectorXd u = 1e20 * Eigen::VectorXd::Ones(qp_.model.n_in);
   u.tail(estimator.NumJoints()) =
       max_torque_ * Eigen::VectorXd::Ones(estimator.NumJoints());
-
   qp_.init(proxsuite::nullopt, proxsuite::nullopt, proxsuite::nullopt,
-           proxsuite::nullopt, C, d_, u);
+           proxsuite::nullopt, C, d, u);
 }
 
 Eigen::VectorXd WholeBodyController::Compute(
     double t, const pinocchio::Model &model, pinocchio::Data &data,
     const FixedPointsEstimator &estimator,
     const std::vector<boost::shared_ptr<Motion>> &motions,
-    ConstRefVectorXd old_torque, ConstRefVectorXi index,
-    ConstRefVectorXd limits) {
+    ConstRefVectorXd old_torque) {
   size_t motions_dim = GetMotionsDim(motions);
 
   Eigen::MatrixXd motions_jacobian =
@@ -109,15 +103,6 @@ Eigen::VectorXd WholeBodyController::Compute(
     start_row += motion->dim_;
   }
 
-  const auto points = estimator.GetContactPoints();
-  for (const auto eef : eefs_) {
-    for (size_t i = 0; i < index.size(); ++i) {
-      if (eef == index[i]) {
-        d_[eef_to_row_.at(eef)] = limits[i];
-      }
-    }
-  }
-
   double lambda_kd = 0.0;
   double Kd = 1;
 
@@ -126,7 +111,7 @@ Eigen::VectorXd WholeBodyController::Compute(
   H_.block(6, 6, estimator.NumJoints(), estimator.NumJoints()) +=
       lambda_kd *
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
-  double lambda_torque = 5;
+  double lambda_torque = 0.1;
   H_.block(estimator.NumDoF(), estimator.NumDoF(), estimator.NumJoints(),
            estimator.NumJoints()) =
       lambda_torque *
@@ -151,7 +136,7 @@ Eigen::VectorXd WholeBodyController::Compute(
   A.block(estimator.NumDoF(), 0, 3 * estimator.NumContacts(),
           estimator.NumDoF()) = estimator.constraint_;
   b.tail(3 * estimator.NumContacts()) = -estimator.acceleration_;
-  qp_.update(H_, g, A, b, proxsuite::nullopt, d_,
+  qp_.update(H_, g, A, b, proxsuite::nullopt, proxsuite::nullopt,
              proxsuite::nullopt);
   qp_.solve();
   qp_.settings.initial_guess =
@@ -159,7 +144,6 @@ Eigen::VectorXd WholeBodyController::Compute(
   size_t start_force = estimator.NumDoF() + estimator.NumJoints();
   for (size_t i = 0; i < eefs_.size(); ++i) {
     forces_[eefs_.at(i)] = qp_.results.x.segment<3>(start_force + i * 3);
-    std::cout<<" FFFF "<<  i <<" eeef"<< eefs_.at(i)<< " FFF "<< forces_.at(eefs_.at(i))<< std::endl;
   }
   PublishForceMarker(estimator);
   if (qp_.results.info.status !=

@@ -264,9 +264,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   bp::class_<WholeBodyController>(
       "WholeBodyController",
-      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double>())
-      .def("compute", &WholeBodyController::ComputeWithoutLimits)
-      .def("compute_with_limits", &WholeBodyController::Compute)
+      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double, size_t>())
+      .def("compute", &WholeBodyController::Compute)
       .def("get_force", &WholeBodyController::GetForce);
 
   bp::def("get_end_of_motion", &GetEndOfMotion,

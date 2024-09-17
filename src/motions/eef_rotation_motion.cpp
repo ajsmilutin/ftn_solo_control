@@ -11,6 +11,7 @@ EEFRotationMotion::GetPositionError(const RefMatrix3d rot,
                                     const pinocchio::Model &model,
                                     pinocchio::Data &data) const {
   const auto &ori = data.oMf[eef_index_].rotation();
+  const auto err = ori * pinocchio::log3(ori.transpose() * rot);
   return ori * pinocchio::log3(ori.transpose() * rot);
 }
 

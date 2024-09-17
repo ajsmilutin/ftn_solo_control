@@ -37,7 +37,9 @@ public:
   Eigen::VectorXd velocity_;
   Eigen::VectorXd acceleration_;
 
-  inline const std::vector<size_t> &GetContactPoints() const { return indexes_; }
+  inline const std::vector<size_t> &GetContactPoints() const {
+    return indexes_;
+  }
 
 protected:
   void SetData(ConstRefVectorXd q, ConstRefVectorXd qv,
@@ -45,16 +47,17 @@ protected:
 
   void EstimateVelocities(const SensorData &sensors);
   void UpdateInternals(
-      const std::unordered_map<size_t, pinocchio::SE3> &touching_poses,
-      const std::unordered_map<size_t, pinocchio::SE3> &placements);
+      const std::map<size_t, pinocchio::SE3> &touching_poses,
+      const std::map<size_t, pinocchio::SE3> &placements);
+  void UpdateIndexes();
   double dt_;
   size_t num_joints_;
   const pinocchio::Model &model_;
   pinocchio::Data &data_;
   std::vector<size_t> indexes_;
-  std::unordered_map<size_t, pinocchio::SE3> poses_;
-  std::unordered_map<size_t, pinocchio::SE3> touching_poses_;
-  std::unordered_map<size_t, size_t> indexes_map_;
+  std::map<size_t, pinocchio::SE3> poses_;
+  std::map<size_t, pinocchio::SE3> touching_poses_;
+  std::map<size_t, size_t> indexes_map_;
 };
 
 } // namespace ftn_solo_control

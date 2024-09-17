@@ -40,10 +40,10 @@ pinocchio::SE3 GetTouchingPlacement(const pinocchio::Model &model,
 void GetConstraintJacobian(
     const pinocchio::Model &model, pinocchio::Data &data,
     const FrictionConeMap &friction_cones, RefMatrixXd constraint,
-    std::unordered_map<size_t, pinocchio::SE3> *touching_poses,
-    std::unordered_map<size_t, pinocchio::SE3> *placements) {
+    std::map<size_t, pinocchio::SE3> *touching_poses,
+    std::map<size_t, pinocchio::SE3> *placements) {
 
-  std::unordered_map<size_t, pinocchio::SE3> poses;
+  std::map<size_t, pinocchio::SE3> poses;
   std::transform(friction_cones.cbegin(), friction_cones.cend(),
                  std::inserter(poses, poses.end()),
                  [](const std::pair<size_t, FrictionCone> &friction_cone) {
@@ -86,10 +86,10 @@ Eigen::MatrixXd GetContactJacobian(const pinocchio::Model &model,
 
 void GetConstraintJacobian(
     const pinocchio::Model &model, pinocchio::Data &data,
-    const std::unordered_map<size_t, pinocchio::SE3> &poses,
+    const std::map<size_t, pinocchio::SE3> &poses,
     RefMatrixXd constraint,
-    std::unordered_map<size_t, pinocchio::SE3> *touching_poses,
-    std::unordered_map<size_t, pinocchio::SE3> *placements) {
+    std::map<size_t, pinocchio::SE3> *touching_poses,
+    std::map<size_t, pinocchio::SE3> *placements) {
   size_t i = 0;
   size_t num_constraints = poses.size() * 3;
   pinocchio::SE3 *touching_pose_ptr = nullptr;

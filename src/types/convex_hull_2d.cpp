@@ -1,4 +1,6 @@
 #include <ftn_solo_control/types/convex_hull_2d.h>
+
+#include <iostream>
 namespace ftn_solo_control {
 namespace {
 Eigen::Vector2d ComputeIntersection(ConstRefVector2d p0,
@@ -51,13 +53,13 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
         (points_1.at((i + 1) % points_1.size()) - points_1.at(i)).normalized();
     const Eigen::Vector2d normal(-direction(1), direction(0));
     const double offset = -normal.dot(points_1.at(i));
-    bool prev_point_in = points_2.front().dot(normal) + offset > -kEpsilon;
+    bool prev_point_in = points_2.front().dot(normal) + offset > kEpsilon;
     for (size_t j = 0; j < points_2.size(); ++j) {
       const auto &current_point = points_2.at((j + 1) % points_2.size());
       const auto &prev_point = points_2.at(j);
 
       const bool current_point_in =
-          current_point.dot(normal) + offset > -kEpsilon;
+          current_point.dot(normal) + offset > kEpsilon;
       Eigen::Vector2d intersection = ComputeIntersection(
           prev_point, (current_point - prev_point).normalized(), points_1.at(i),
           direction);
@@ -78,9 +80,14 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
   std::vector<Eigen::Vector2d> clean_points;
   clean_points.push_back(points_2.front());
   for (const auto &pt : points_2) {
-    if ((pt-clean_points.back()).norm()>1e-4){
+    if ((pt - clean_points.back()).norm() > 1e-3 &&
+        (pt - clean_points.front()).norm() > 1e-3) {
       clean_points.push_back(pt);
     }
+  }
+  std::cout<<"CLEAN POINTS"<< std::endl;
+  for (const auto pt: clean_points){
+    std::cout<<" PT "<< pt.transpose()<< std::endl;
   }
   return ConvexHull2D(clean_points);
 }

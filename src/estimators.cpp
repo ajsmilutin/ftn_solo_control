@@ -43,10 +43,10 @@ visualization_msgs::msg::Marker GetPointMarker(ConstRefVector3d position,
 }
 
 void PublishMarkers(
-    const std::unordered_map<size_t, pinocchio::SE3> &poses,
-    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
-    const pinocchio::Data &data) {  
-  if ((++index) % 50 != publish_on)      {
+    const std::map<size_t, pinocchio::SE3> &poses,
+    const std::map<size_t, pinocchio::SE3> &touching_poses_,
+    const pinocchio::Data &data) {
+  if ((++index) % 50 != publish_on) {
     return;
   }
   visualization_msgs::msg::MarkerArray all_markers;
@@ -133,14 +133,23 @@ void FixedPointsEstimator::Init(ConstRefVectorXd q, ConstRefVectorXd qv,
   rot.col(0) = y.cross(rot.col(2)).normalized();
   rot.col(1) = rot.col(2).cross(rot.col(1));
   estimated_q_.segment<4>(3) = Eigen::Quaterniond(rot).inverse().coeffs();
+  UpdateIndexes();
 }
 
+void FixedPointsEstimator::UpdateIndexes() {
+  indexes_.clear();
+  for (const auto pose : poses_) {
+    indexes_.push_back(pose.first);
+  }
+}
+ 
 bool FixedPointsEstimator::UnFix(size_t index) {
   auto it = poses_.find(index);
   if (it == poses_.end()) {
     return false;
   } else {
     poses_.erase(it);
+    UpdateIndexes();
     return true;
   }
 }
@@ -153,6 +162,7 @@ void FixedPointsEstimator::SetFixed(size_t frame_index,
       GetTouchingPose(model_, data_, frame_index, new_orientation.col(2));
   new_pose.translation() += pose.translation();
   poses_[frame_index] = new_pose;
+  UpdateIndexes();
 }
 
 void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
@@ -168,7 +178,7 @@ void FixedPointsEstimator::Estimate(double t, ConstRefVectorXd q,
   Eigen::VectorXd step = Eigen::VectorXd::Zero(model_.nv);
   pinocchio::framesForwardKinematics(model_, data_, estimated_q_);
   pinocchio::computeJointJacobians(model_, data_, estimated_q_);
-  std::unordered_map<size_t, pinocchio::SE3> placements;
+  std::map<size_t, pinocchio::SE3> placements;
   touching_poses_ = {};
 
   Eigen::Quaterniond qd = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3],
@@ -230,14 +240,13 @@ void FixedPointsEstimator::EstimateVelocities(const SensorData &sensors) {
 }
 
 void FixedPointsEstimator::UpdateInternals(
-    const std::unordered_map<size_t, pinocchio::SE3> &touching_poses_,
-    const std::unordered_map<size_t, pinocchio::SE3> &placements) {
+    const std::map<size_t, pinocchio::SE3> &touching_poses_,
+    const std::map<size_t, pinocchio::SE3> &placements) {
   pinocchio::forwardKinematics(model_, data_, estimated_q_, estimated_qv_,
                                0 * estimated_qv_);
   pinocchio::updateFramePlacements(model_, data_);
   size_t i = 0;
   for (auto &position : poses_) {
-    std::cout<<"ESTIMATOR "<<position.first << std::endl;
     const auto &frame = model_.frames.at(position.first);
     const Eigen::Vector3d center_velocity =
         pinocchio::getFrameVelocity(

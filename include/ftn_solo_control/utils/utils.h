@@ -35,15 +35,15 @@ Eigen::MatrixXd GetContactJacobian(const pinocchio::Model &model,
 void GetConstraintJacobian(
     const pinocchio::Model &model, pinocchio::Data &data,
     const FrictionConeMap &friction_cones, RefMatrixXd constraint,
-    std::unordered_map<size_t, pinocchio::SE3> *touching_poses = nullptr,
-    std::unordered_map<size_t, pinocchio::SE3> *placements = nullptr);
+    std::map<size_t, pinocchio::SE3> *touching_poses = nullptr,
+    std::map<size_t, pinocchio::SE3> *placements = nullptr);
 
 void GetConstraintJacobian(
     const pinocchio::Model &model, pinocchio::Data &data,
-    const std::unordered_map<size_t, pinocchio::SE3> &poses,
+    const std::map<size_t, pinocchio::SE3> &poses,
     RefMatrixXd constraint,
-    std::unordered_map<size_t, pinocchio::SE3> *touching_poses = nullptr,
-    std::unordered_map<size_t, pinocchio::SE3> *placements = nullptr);
+    std::map<size_t, pinocchio::SE3> *touching_poses = nullptr,
+    std::map<size_t, pinocchio::SE3> *placements = nullptr);
 
 size_t GetMotionsDim(const std::vector<boost::shared_ptr<Motion>> &motions);
 

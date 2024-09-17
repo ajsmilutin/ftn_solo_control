@@ -30,8 +30,6 @@ void ExpandSurface(std::vector<Eigen::Vector2d> &result, ConstRefVector2d pt_0,
     if (result.empty()) {
       result.push_back(pt_0);
     } else if ((pt_0 - result.back()).norm() > 1e-4) {
-      std::cout << "RESSS " << pt_0 << " " << result.back() << " BBBBBBBBB"
-                << (pt_0 - result.back()).norm() << std::endl;
       result.push_back(pt_0);
     }
   }
@@ -48,21 +46,23 @@ ConvexHull2D GetProjectedWCM(const FrictionConeMap &friction_cones,
   const size_t num_force = 3 * friction_cones.size();
   const size_t num_torque = torque_constraint.rows();
   proxsuite::proxqp::dense::QP<double> qp(num_force + 2, 6,
-                                          total_sides + num_torque, false,
+                                          total_sides + 2 + num_torque, false,
                                           proxsuite::proxqp::HessianType::Zero);
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(6, num_force + 2);
   size_t start_row = 0;
+  Eigen::Vector3d position = Eigen::Vector3d::Zero();
   for (const auto &cone : friction_cones) {
     A.block<3, 3>(0, start_row) = Eigen::MatrixXd::Identity(3, 3);
     A.block<3, 3>(3, start_row) = CrossMatrix(cone.second.GetPosition());
+    position += cone.second.GetPosition();
     start_row += 3;
   }
-  constexpr const double mg = 3 * 9.81;
-  A(4, num_force) = mg;
-  A(3, num_force + 1) = -mg;
-  Eigen::VectorXd b = (Eigen::VectorXd(6) << 0, 0, mg, 0, 0, 0).finished();
+  position /= friction_cones.size();
+  A(4, num_force) = 1;
+  A(3, num_force + 1) = -1;
+  Eigen::VectorXd b = (Eigen::VectorXd(6) << 0, 0, 1, 0, 0, 0).finished();
   Eigen::MatrixXd C =
-      Eigen::MatrixXd::Zero(total_sides + num_torque, num_force + 2);
+      Eigen::MatrixXd::Zero(total_sides + num_torque + 2, num_force + 2);
   start_row = 0;
   size_t i = 0;
   for (const auto &cone : friction_cones) {
@@ -71,13 +71,17 @@ ConvexHull2D GetProjectedWCM(const FrictionConeMap &friction_cones,
     ++i;
     start_row += cone.second.GetNumSides();
   }
-  C.bottomLeftCorner(num_torque, num_force) = torque_constraint;
-  Eigen::VectorXd d = Eigen::VectorXd::Zero(total_sides + num_torque);
+  C.block<2, 2>(total_sides, num_force) = Eigen::Matrix2d::Identity();
+  C.bottomLeftCorner(num_torque, num_torque) = torque_constraint;
+  Eigen::VectorXd d = Eigen::VectorXd::Zero(total_sides + num_torque + 2);
+  d.segment<2>(total_sides) = position.head<2>() - Eigen::Vector2d::Ones();
   d.tail(num_torque) = lb;
-  Eigen::VectorXd u = Eigen::VectorXd::Constant(total_sides + num_torque, 1e10);
+  Eigen::VectorXd u =
+      Eigen::VectorXd::Constant(total_sides + num_torque + 2, 1e10);
+  u.segment<2>(total_sides) = position.head<2>() + Eigen::Vector2d::Ones();
   u.tail(num_torque) = ub;
   Eigen::VectorXd g = Eigen::VectorXd::Zero(num_force + 2);
-  g(num_force + 1) = -1;
+  g(num_force) = -1;
   qp.settings.eps_abs = 1e-6;
   qp.init(Eigen::MatrixXd::Zero(num_force + 2, num_force + 2), g, A, b, C, d,
           u);
@@ -87,7 +91,7 @@ ConvexHull2D GetProjectedWCM(const FrictionConeMap &friction_cones,
   qp.settings.initial_guess =
       proxsuite::proxqp::InitialGuessStatus::WARM_START_WITH_PREVIOUS_RESULT;
   Eigen::Vector2d pt_0 = qp.results.x.tail<2>();
-  g(num_force + 1) = 1;
+  g(num_force) = 1;
   qp.update(proxsuite::nullopt, g, proxsuite::nullopt, proxsuite::nullopt,
             proxsuite::nullopt, proxsuite::nullopt, proxsuite::nullopt);
   qp.solve(qp.results.x, proxsuite::nullopt, proxsuite::nullopt);
@@ -119,7 +123,8 @@ ConvexHull2D GetProjectedWCMWithTorque(const pinocchio::Model &model,
     ub.segment<3>(start) -= data.g.segment<3>(joint - 3 + 6);
     start += 3;
   }
-  return GetProjectedWCM(friction_cones, torque_constraint, lb, ub);
+  const double mg = data.mass[0] * 9.81;
+  return GetProjectedWCM(friction_cones, torque_constraint, lb / mg, ub / mg);
 }
 
 } // namespace ftn_solo_control
