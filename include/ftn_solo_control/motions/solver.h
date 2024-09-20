@@ -12,4 +12,9 @@ bool GetEndOfMotion(const pinocchio::Model &model, pinocchio::Data &data,
                     const std::vector<boost::shared_ptr<Motion>> &motions,
                     RefVectorXd q);
 
-}
+bool GetEndOfMotionPrioritized(
+    const pinocchio::Model &model, pinocchio::Data &data,
+    const FrictionConeMap &friction_cones,
+    const std::vector<boost::shared_ptr<Motion>> &motions, RefVectorXd q);
+
+} // namespace ftn_solo_control

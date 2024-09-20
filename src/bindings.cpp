@@ -217,7 +217,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
     }
   };
 
-  bp::class_<Motion>("motion", bp::init<double, double>());
+  bp::class_<Motion>("motion", bp::init<double, double>())
+      .def("set_priority", &Motion::SetPriority);
   bp::class_<EEFPositionMotionWrapper, bp::bases<Motion>>(
       "EEFPositionMotion", bp::init<size_t, ConstRefVector3b,
                                     const pinocchio::SE3 &, double, double>())
@@ -264,11 +265,17 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   bp::class_<WholeBodyController>(
       "WholeBodyController",
-      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double, size_t>())
+      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double,
+               size_t>())
       .def("compute", &WholeBodyController::Compute)
       .def("get_force", &WholeBodyController::GetForce);
 
   bp::def("get_end_of_motion", &GetEndOfMotion,
+          (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
+           bp::arg("motions"), bp::arg("q")),
+          "Computes robot pose at the end of motion");
+
+  bp::def("get_end_of_motion_prioritized", &GetEndOfMotionPrioritized,
           (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
            bp::arg("motions"), bp::arg("q")),
           "Computes robot pose at the end of motion");

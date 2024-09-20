@@ -102,7 +102,6 @@ Eigen::VectorXd WholeBodyController::Compute(
         motion->GetAcceleration(model, data);
     start_row += motion->dim_;
   }
-
   double lambda_kd = 0.0;
   double Kd = 1;
 
@@ -111,7 +110,7 @@ Eigen::VectorXd WholeBodyController::Compute(
   H_.block(6, 6, estimator.NumJoints(), estimator.NumJoints()) +=
       lambda_kd *
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
-  double lambda_torque = 0.1;
+  double lambda_torque = 0.01;
   H_.block(estimator.NumDoF(), estimator.NumDoF(), estimator.NumJoints(),
            estimator.NumJoints()) =
       lambda_torque *

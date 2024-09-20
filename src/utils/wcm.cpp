@@ -74,11 +74,11 @@ ConvexHull2D GetProjectedWCM(const FrictionConeMap &friction_cones,
   C.block<2, 2>(total_sides, num_force) = Eigen::Matrix2d::Identity();
   C.bottomLeftCorner(num_torque, num_torque) = torque_constraint;
   Eigen::VectorXd d = Eigen::VectorXd::Zero(total_sides + num_torque + 2);
-  d.segment<2>(total_sides) = position.head<2>() - Eigen::Vector2d::Ones();
+  d.segment<2>(total_sides) = position.head<2>() - 10 * Eigen::Vector2d::Ones();
   d.tail(num_torque) = lb;
   Eigen::VectorXd u =
       Eigen::VectorXd::Constant(total_sides + num_torque + 2, 1e10);
-  u.segment<2>(total_sides) = position.head<2>() + Eigen::Vector2d::Ones();
+  u.segment<2>(total_sides) = position.head<2>() + 10 * Eigen::Vector2d::Ones();
   u.tail(num_torque) = ub;
   Eigen::VectorXd g = Eigen::VectorXd::Zero(num_force + 2);
   g(num_force) = -1;

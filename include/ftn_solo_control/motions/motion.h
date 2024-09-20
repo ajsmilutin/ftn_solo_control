@@ -12,7 +12,13 @@
 namespace ftn_solo_control {
 class Motion {
 public:
-  Motion(double Kp = 100, double Kd = 50) : Kp_(Kp), Kd_(Kd) {}
+  Motion(double Kp = 100, double Kd = 50)
+      : priority_(0), Kp_(Kp), Kd_(Kd), weight_(1.0) {}
+
+  void SetPriority(size_t priority, double weight) {
+    priority_ = priority;
+    weight_ = weight;
+  }
 
   virtual Eigen::VectorXd GetDesiredAcceleration(double t,
                                                  const pinocchio::Model &model,
@@ -37,10 +43,14 @@ public:
   }
 
   size_t dim_;
+  size_t priority_;
+
+  inline double GetWeight() const { return weight_; }
 
 protected:
   double Kp_;
   double Kd_;
+  double weight_;
 };
 
 template <class Trajectory> class MotionWithTrajectory : public Motion {
@@ -76,7 +86,6 @@ public:
     auto vel = trajectory_->ZeroVelocity();
     auto acc = trajectory_->ZeroVelocity();
     trajectory_->Get(t, pos, vel, acc);
-
     return acc + Kp_ * GetPositionError(pos, model, data) +
            Kd_ * GetVelocityError(vel, model, data);
   }
