@@ -26,21 +26,28 @@ const double kEpsilon = 1e-6;
 
 } // namespace
 
-ConstRefMatrixXd ConvexHull2D::Equations() {
-  if (!equations_) {
-    equations_ = Eigen::MatrixXd(points_.size(), 3);
-    for (size_t i = 0; i < points_.size(); ++i) {
-      size_t start = i;
-      size_t end = (i + 1) % points_.size();
-      Eigen::Vector2d direction =
-          (points_.at(end) - points_.at(start)).normalized();
-      equations_.value().row(i) =
-          Eigen::Vector3d(-direction(1), direction(0),
-                          -points_.at(start)(1) * direction(0) +
-                              direction(1) * points_.at(start)(0));
-    }
+ConvexHull2D::ConvexHull2D(std::vector<Eigen::Vector2d> points)
+    : points_(std::move(points)) {
+  area_ = 0;
+  centroid_ = Eigen::Vector2d::Zero();
+  for (size_t i = 2; i < points_.size(); ++i) {
+    double triangle_area =
+        ComputeTriangleArea(points_[0], points_[i - 1], points_[i]);
+    centroid_ += triangle_area * (points_[0] + points_[i - 1] + points_[i]);
+    area_ += triangle_area;
   }
-  return equations_.get();
+  centroid_ = centroid_ / area_ / 3;
+  equations_ = Eigen::MatrixXd(points_.size(), 3);
+  for (size_t i = 0; i < points_.size(); ++i) {
+    size_t start = i;
+    size_t end = (i + 1) % points_.size();
+    Eigen::Vector2d direction =
+        (points_.at(end) - points_.at(start)).normalized();
+    equations_.row(i) =
+        Eigen::Vector3d(-direction(1), direction(0),
+                        -points_.at(start)(1) * direction(0) +
+                            direction(1) * points_.at(start)(0));
+  }
 }
 
 ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
@@ -85,19 +92,7 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
       clean_points.push_back(pt);
     }
   }
-  std::cout<<"CLEAN POINTS"<< std::endl;
-  for (const auto pt: clean_points){
-    std::cout<<" PT "<< pt.transpose()<< std::endl;
-  }
   return ConvexHull2D(clean_points);
-}
-
-double ConvexHull2D::Area() {
-  double result = 0;
-  for (size_t i = 2; i < points_.size(); ++i) {
-    result += ComputeTriangleArea(points_[0], points_[i - 1], points_[i]);
-  }
-  return result;
 }
 
 } // namespace ftn_solo_control

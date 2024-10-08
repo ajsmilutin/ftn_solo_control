@@ -43,6 +43,8 @@ GetSimpleConeMarkers(const SimpleConvexCone &cone,
   return marker;
 }
 
+
+
 } // namespace
 
 void InitVisualizationPublisher() {
@@ -76,6 +78,15 @@ void PublishConeMarker(const FrictionCone &cone,
         size)));
   }
   publisher->publish(all_markers);
+}
+
+std_msgs::msg::ColorRGBA MakeColor(double r, double g, double b, double a){
+  std_msgs::msg::ColorRGBA msg;
+  msg.r = r;
+  msg.g = g;
+  msg.b = b;
+  msg.a = a;
+  return msg;
 }
 
 } // namespace ftn_solo_control

@@ -10,13 +10,17 @@ COMMotion::COMMotion(ConstRefVector3b selected,
 
 Eigen::VectorXd COMMotion::GetPositionError(const RefVectorXd pos,
                                             const pinocchio::Model &model,
-                                            pinocchio::Data &data) const {
+                                            pinocchio::Data &data,
+                                            ConstRefVectorXd q,
+                                            ConstRefVectorXd qv) const {
   return pos - origin_.actInv(data.com[0])(indexes_);
 }
 
 Eigen::VectorXd COMMotion::GetVelocityError(const RefVectorXd vel,
                                             const pinocchio::Model &model,
-                                            pinocchio::Data &data) const {
+                                            pinocchio::Data &data,
+                                            ConstRefVectorXd q,
+                                            ConstRefVectorXd qv) const {
 
   return vel - (origin_.rotation().transpose() * data.vcom[0])(indexes_);
 }
@@ -31,7 +35,9 @@ Eigen::MatrixXd COMMotion::GetJacobian(const pinocchio::Model &model,
 }
 
 Eigen::VectorXd COMMotion::GetAcceleration(const pinocchio::Model &model,
-                                           pinocchio::Data &data) const {
+                                           pinocchio::Data &data,
+                                           ConstRefVectorXd q,
+                                           ConstRefVectorXd qv) const {
   return (origin_.rotation().transpose() * data.acom[0])(indexes_);
 }
 } // namespace ftn_solo_control

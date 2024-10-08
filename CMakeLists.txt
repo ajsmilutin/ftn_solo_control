@@ -19,6 +19,9 @@ find_package(Eigen3 REQUIRED PKG_CONFIG_REQUIRES "eigen3 >= 3.0.5")
 find_package(eigenpy REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(proxsuite REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 include(cmake/python.cmake)
 findpython()
@@ -48,12 +51,14 @@ include_directories(${eigenpy_INCLUDE_DIRS})
 include_directories(${visualization_msgs_INCLUDE_DIRS})
 include_directories(${proxsuite_INCLUDE_DIRS})
 
+#add_compile_definitions(SKIP_PUBLISH_MARKERS)
 # create the lib
 add_library(ftn_solo_control_py SHARED 
   src/controllers/whole_body.cpp
   src/motions/com_motion.cpp
   src/motions/eef_rotation_motion.cpp
   src/motions/eef_position_motion.cpp
+  src/motions/joint_motion.cpp
   src/motions/solver.cpp
   src/trajectories/piecewise_linear.cpp
   src/trajectories/spline.cpp
@@ -64,6 +69,7 @@ add_library(ftn_solo_control_py SHARED
   src/utils/wcm.cpp
   src/utils/conversions.cpp
   src/utils/visualization_utils.cpp
+  src/utils/trajectory_planner.cpp
   src/utils/utils.cpp
   src/estimators.cpp
   src/bindings.cpp)
@@ -72,7 +78,7 @@ target_link_libraries(ftn_solo_control_py
                       ${Boost_LIBRARIES}
                       proxsuite::proxsuite-vectorized)
 # target_compile_options(ftn_solo_control_py PUBLIC "-march=native")
-ament_target_dependencies(ftn_solo_control_py rclcpp PythonLibs Eigen3 eigenpy visualization_msgs)
+ament_target_dependencies(ftn_solo_control_py rclcpp PythonLibs Eigen3 eigenpy visualization_msgs geometry_msgs tf2 tf2_ros)
 target_include_directories(ftn_solo_control_py SYSTEM PRIVATE ${PYTHON_INCLUDE_DIR})
 
 

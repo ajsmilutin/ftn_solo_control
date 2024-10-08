@@ -10,12 +10,11 @@ namespace ftn_solo_control {
 
 class COMMotionWrapper;
 
-void InintWholeBodyPublisher();
+void InitWholeBodyPublisher();
 class WholeBodyController {
 public:
   WholeBodyController(const FixedPointsEstimator &estimator,
-                      const FrictionConeMap &friction_cones, double max_torque,
-                      size_t eef);
+                      const FrictionConeMap &friction_cones, double max_torque);
 
   Eigen::VectorXd Compute(double t, const pinocchio::Model &model,
                           pinocchio::Data &data,
