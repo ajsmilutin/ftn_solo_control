@@ -203,7 +203,7 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
     Eigen::Vector3d new_com = data_.com[0];
     new_com(2) = 1;
     if (((next_wcm.Equations() * new_com).array() >
-         (0.02 * origin_.rotation()(2, 2) - 1e-4))
+         (0.04 - 1e-4))
             .all()) {
       break;
     }
@@ -238,7 +238,7 @@ Eigen::Vector2d TrajectoryPlanner::ComputeCoMPos(const ConvexHull2D &wcm,
   qp.init(
       Eigen::Matrix2d::Identity(), -origin_.translation().head<2>(),
       proxsuite::nullopt, proxsuite::nullopt, wcm.Equations().leftCols<2>(),
-      Eigen::VectorXd::Constant(qp.model.n_in, 0.04 * origin.rotation()(2, 2)) -
+      Eigen::VectorXd::Constant(qp.model.n_in, 0.05) -
           wcm.Equations().rightCols<1>(),
       Eigen::VectorXd::Constant(qp.model.n_in, 1e10));
   qp.settings.initial_guess = proxsuite::proxqp::InitialGuessStatus::WARM_START;
