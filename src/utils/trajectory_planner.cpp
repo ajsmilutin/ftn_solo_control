@@ -198,13 +198,20 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   while (true) {
     GetEndOfMotionPrioritized(model_, data_, friction_cones, motions, q_, true);
     pinocchio::computeGeneralizedGravity(model_, data_, q_);
+
+    std::chrono::time_point<std::chrono::system_clock> last =
+        std::chrono::system_clock::now();
+
     next_wcm = GetProjectedWCMWithTorque(model_, data_, next_friction_cones,
                                          max_torque);
+    std::cout << "EAAAA "
+              << std::chrono::duration<double>(
+                     std::chrono::system_clock::now() - last)
+                     .count()
+              << std::endl;
     Eigen::Vector3d new_com = data_.com[0];
     new_com(2) = 1;
-    if (((next_wcm.Equations() * new_com).array() >
-         (0.04 - 1e-4))
-            .all()) {
+    if (((next_wcm.Equations() * new_com).array() > (0.03 - 1e-4)).all()) {
       break;
     }
     com_xy_ = ComputeCoMPos(next_wcm, com_pos.head<2>(), origin_);
@@ -235,12 +242,11 @@ Eigen::Vector2d TrajectoryPlanner::ComputeCoMPos(const ConvexHull2D &wcm,
   proxsuite::proxqp::dense::QP<double> qp(
       2, 0, wcm.Equations().rows(), false,
       proxsuite::proxqp::HessianType::Diagonal);
-  qp.init(
-      Eigen::Matrix2d::Identity(), -origin_.translation().head<2>(),
-      proxsuite::nullopt, proxsuite::nullopt, wcm.Equations().leftCols<2>(),
-      Eigen::VectorXd::Constant(qp.model.n_in, 0.05) -
-          wcm.Equations().rightCols<1>(),
-      Eigen::VectorXd::Constant(qp.model.n_in, 1e10));
+  qp.init(Eigen::Matrix2d::Identity(), -origin_.translation().head<2>(),
+          proxsuite::nullopt, proxsuite::nullopt, wcm.Equations().leftCols<2>(),
+          Eigen::VectorXd::Constant(qp.model.n_in, 0.04) -
+              wcm.Equations().rightCols<1>(),
+          Eigen::VectorXd::Constant(qp.model.n_in, 1e10));
   qp.settings.initial_guess = proxsuite::proxqp::InitialGuessStatus::WARM_START;
   qp.solve(wcm.Centroid(), proxsuite::nullopt, proxsuite::nullopt);
   return qp.results.x;
