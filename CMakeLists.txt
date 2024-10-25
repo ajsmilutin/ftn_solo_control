@@ -4,6 +4,9 @@ project(ftn_solo_control)
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(PYTHON_COMPONENTS Interpreter Development NumPy)
+
+
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -24,7 +27,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 
 include(cmake/python.cmake)
-findpython()
+findpython(REQUIRED)
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -45,6 +48,7 @@ endif()
 # include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PYTHON_INCLUDE_DIRS})
+include_directories(${NUMPY_INCLUDE_DIRS})
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${EIGEN3_INCLUDE_DIR})
 include_directories(${eigenpy_INCLUDE_DIRS})

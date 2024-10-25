@@ -18,7 +18,7 @@ public:
 
   Eigen::VectorXd Compute(double t, const pinocchio::Model &model,
                           pinocchio::Data &data,
-                          const FixedPointsEstimator &estimator,
+                          FixedPointsEstimator &estimator,
                           const std::vector<boost::shared_ptr<Motion>> &motions,
                           ConstRefVectorXd old_torque);
 

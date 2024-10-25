@@ -32,12 +32,17 @@ public:
 
   FrictionConeMap GetFrictionCones(double mu = 1, size_t num_sides = 4);
 
+  void PublishState(size_t seconds, size_t nanoseconds) const;
+
+  inline void SetEffort(ConstRefVectorXd effort) { effort_ = effort;}
+
   inline size_t NumJoints() const { return num_joints_; }
   inline size_t NumDoF() const { return model_.nv; }
   inline size_t NumContacts() const { return poses_.size(); }
   inline bool Initialized() const { return initialized_; }
   Eigen::VectorXd estimated_q_;
   Eigen::VectorXd estimated_qv_;
+  Eigen::VectorXd effort_;
   Eigen::MatrixXd constraint_;
   Eigen::VectorXd eef_positions_;
   Eigen::VectorXd velocity_;
@@ -70,6 +75,8 @@ protected:
   std::map<size_t, size_t> indexes_map_;
   std::atomic<bool> initialized_;
   std::thread thread_;
+  Eigen::Quaterniond initial_orientation_;
+  Eigen::Quaterniond measured_orientation_;
 };
 
 } // namespace ftn_solo_control

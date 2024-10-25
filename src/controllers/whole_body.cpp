@@ -43,7 +43,6 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
           estimator.NumJoints() + TotalSides(friction_cones) +
               estimator.NumContacts(),
           false, proxsuite::proxqp::HessianType::Dense) {
-  size_t total_sides = TotalSides(friction_cones);
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(qp_.model.n_in, qp_.model.dim);
   size_t start_row = 0;
   size_t start_col = estimator.NumDoF() + estimator.NumJoints();
@@ -81,7 +80,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
 
 Eigen::VectorXd WholeBodyController::Compute(
     double t, const pinocchio::Model &model, pinocchio::Data &data,
-    const FixedPointsEstimator &estimator,
+    FixedPointsEstimator &estimator,
     const std::vector<boost::shared_ptr<Motion>> &motions,
     ConstRefVectorXd old_torque) {
   size_t motions_dim = GetMotionsDim(motions);
@@ -141,12 +140,8 @@ Eigen::VectorXd WholeBodyController::Compute(
     forces_[eefs_.at(i)] = qp_.results.x.segment<3>(start_force + i * 3);
   }
   PublishForceMarker(estimator);
-  if (qp_.results.info.status !=
-      proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED) {
-    char c;
-    std::cin >> c;
-    return old_torque;
-  }
+  estimator.SetEffort(
+      qp_.results.x.segment(estimator.NumDoF(), estimator.NumJoints()));
   return qp_.results.x.segment(estimator.NumDoF(), estimator.NumJoints());
 }
 
@@ -165,9 +160,9 @@ void WholeBodyController::PublishForceMarker(
   single_arrow.type = visualization_msgs::msg::Marker::ARROW;
   single_arrow.color.r = single_arrow.color.a = 1;
   single_arrow.color.g = 0.5;
-  single_arrow.scale.x = 0.02;
-  single_arrow.scale.y = 0.04;
-  single_arrow.scale.z = 0.04;
+  single_arrow.scale.x = 0.015;
+  single_arrow.scale.y = 0.025;
+  single_arrow.scale.z = 0.05;
   for (size_t i = 0; i < eefs_.size(); ++i) {
     single_arrow.ns = "force" + std::to_string(eefs_.at(i));
     single_arrow.id = eefs_.at(i);
@@ -176,7 +171,7 @@ void WholeBodyController::PublishForceMarker(
         ToPoint(estimator.eef_positions_.segment<3>(3 * i)));
     single_arrow.points.push_back(
         ToPoint(estimator.eef_positions_.segment<3>(3 * i) +
-                0.01 * GetForce(eefs_.at(i))));
+                0.025 * GetForce(eefs_.at(i))));
     all_markers.markers.push_back(single_arrow);
   }
   publisher->publish(all_markers);

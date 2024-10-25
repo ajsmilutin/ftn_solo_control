@@ -142,7 +142,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("estimated_qv", &FixedPointsEstimator::estimated_qv_)
       .def_readonly("constraint", &FixedPointsEstimator::constraint_)
       .def_readonly("acceleration", &FixedPointsEstimator::acceleration_)
-      .def_readonly("velocity", &FixedPointsEstimator::velocity_);
+      .def_readonly("velocity", &FixedPointsEstimator::velocity_)
+      .def("publish_state", &FixedPointsEstimator::PublishState);
 
   bp::def("get_touching_pose", &GetTouchingPose,
           (bp::arg("model"), bp::arg("data"), bp::arg("frame_index"),
