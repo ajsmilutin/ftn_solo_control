@@ -57,8 +57,7 @@ private:
       PieceWiseLinearRotation;
 
   Eigen::Vector2d ComputeCoMPos(const ConvexHull2D &wcm,
-                                ConstRefVector2d com_pos,
-                                pinocchio::SE3 origin);
+                                ConstRefVector2d com_pos);
   boost::shared_ptr<PieceWiseLinearPosition> com_trajectory_;
   boost::shared_ptr<PieceWiseLinearPosition> base_trajectory_;
   boost::shared_ptr<PieceWiseLinearRotation> rotation_trajectory_;

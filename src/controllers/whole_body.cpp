@@ -106,7 +106,7 @@ Eigen::VectorXd WholeBodyController::Compute(
   H_.block(6, 6, estimator.NumJoints(), estimator.NumJoints()) +=
       lambda_kd *
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
-  double lambda_torque = 0.01;
+  double lambda_torque = 0.03;
   H_.block(estimator.NumDoF(), estimator.NumDoF(), estimator.NumJoints(),
            estimator.NumJoints()) =
       lambda_torque *
