@@ -13,22 +13,26 @@ class COMMotion
                                              Eigen::VectorXd, RefVectorXd>> {
 public:
   COMMotion(ConstRefVector3b selected,
-      const pinocchio::SE3 &origin_pose = pinocchio::SE3::Identity(),
-      double Kp = 100, double Kd = 50);
+            const pinocchio::SE3 &origin_pose = pinocchio::SE3::Identity(),
+            double Kp = 100, double Kd = 50);
 
   Eigen::VectorXd GetPositionError(const RefVectorXd pos,
                                    const pinocchio::Model &model,
-                                   pinocchio::Data &data) const override;
-  virtual Eigen::VectorXd
-  GetVelocityError(const RefVectorXd vel, const pinocchio::Model &model,
-                   pinocchio::Data &data) const override;
+                                   pinocchio::Data &data, ConstRefVectorXd q,
+                                   ConstRefVectorXd qv) const override;
+  virtual Eigen::VectorXd GetVelocityError(const RefVectorXd vel,
+                                           const pinocchio::Model &model,
+                                           pinocchio::Data &data,
+                                           ConstRefVectorXd q,
+                                           ConstRefVectorXd qv) const override;
 
   Eigen::MatrixXd GetJacobian(const pinocchio::Model &model,
                               pinocchio::Data &data, ConstRefVectorXd q,
                               ConstRefVectorXd qv) const override;
 
   Eigen::VectorXd GetAcceleration(const pinocchio::Model &model,
-                                  pinocchio::Data &data) const override;
+                                  pinocchio::Data &data, ConstRefVectorXd q,
+                                  ConstRefVectorXd qv) const override;
 
 protected:
   size_t eef_index_;

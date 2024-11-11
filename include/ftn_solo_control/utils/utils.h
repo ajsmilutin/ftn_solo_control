@@ -50,7 +50,7 @@ size_t GetMotionsDim(const std::vector<boost::shared_ptr<Motion>> &motions);
 void GetMotionsJacobian(const pinocchio::Model &model, pinocchio::Data &data,
                         ConstRefVectorXd q, ConstRefVectorXd qv,
                         const std::vector<boost::shared_ptr<Motion>> &motions,
-                        RefMatrixXd jacobian);
+                        RefMatrixXd jacobian, bool weighted = false);
 
 Eigen::Matrix3d CrossMatrix(ConstRefVector3d pos);
 

@@ -12,6 +12,8 @@
   <depend>Boost</depend>
   <depend>PythonLibs</depend>
   <depend>pinocchio</depend>
+  <depend>python3</depend>
+  <depend>python3-numpy</depend>
   <depend>eigenpy</depend>
   <depend>visualization_msgs</depend>
   <depend>proxsuite</depend>

@@ -6,6 +6,7 @@
 #include <ftn_solo_control/motions/com_motion.h>
 #include <ftn_solo_control/motions/eef_position_motion.h>
 #include <ftn_solo_control/motions/eef_rotation_motion.h>
+#include <ftn_solo_control/motions/joint_motion.h>
 #include <ftn_solo_control/motions/solver.h>
 #include <ftn_solo_control/trajectories/piecewise_linear.h>
 #include <ftn_solo_control/trajectories/spline.h>
@@ -13,6 +14,7 @@
 #include <ftn_solo_control/types/convex_hull_2d.h>
 #include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
+#include <ftn_solo_control/utils/trajectory_planner.h>
 #include <ftn_solo_control/utils/utils.h>
 #include <ftn_solo_control/utils/visualization_utils.h>
 #include <ftn_solo_control/utils/wcm.h>
@@ -96,7 +98,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   InitVisualizationPublisher();
   InitEstimatorPublisher();
-  InintWholeBodyPublisher();
+  InitWholeBodyPublisher();
+  InitTrajectoryPlannerPublisher();
 
   bp::class_<ImuData>("ImuData", bp::init())
       .def_readwrite("angular_velocity", &ImuData::angular_velocity)
@@ -128,16 +131,19 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       bp::init<double, pinocchio::Model &, pinocchio::Data &,
                const std::vector<size_t> &>())
       .def("init", &FixedPointsEstimator::Init)
+      .def("initialized", &FixedPointsEstimator::Initialized)
       .def("estimate", &FixedPointsEstimator::Estimate)
       .def("un_fix", &FixedPointsEstimator::UnFix)
       .def("set_fixed", &FixedPointsEstimator::SetFixed)
       .def("get_friction_cones", &FixedPointsEstimator::GetFrictionCones,
            (bp::arg("mu") = 1.0, bp::arg("num_sides") = 4))
+      .def("create_friction_cone", &FixedPointsEstimator::CreateFrictionCone)
       .def_readonly("estimated_q", &FixedPointsEstimator::estimated_q_)
       .def_readonly("estimated_qv", &FixedPointsEstimator::estimated_qv_)
       .def_readonly("constraint", &FixedPointsEstimator::constraint_)
       .def_readonly("acceleration", &FixedPointsEstimator::acceleration_)
-      .def_readonly("velocity", &FixedPointsEstimator::velocity_);
+      .def_readonly("velocity", &FixedPointsEstimator::velocity_)
+      .def("publish_state", &FixedPointsEstimator::PublishState);
 
   bp::def("get_touching_pose", &GetTouchingPose,
           (bp::arg("model"), bp::arg("data"), bp::arg("frame_index"),
@@ -217,7 +223,19 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
     }
   };
 
-  bp::class_<Motion>("motion", bp::init<double, double>());
+  class JointMotionWrapper : public JointMotion {
+  public:
+    using JointMotion::JointMotion;
+    void SetTrajectorySpline(
+        const boost::shared_ptr<SplineTrajectoryWrapper> &trajectory) {
+      JointMotion::SetTrajectory(trajectory);
+    }
+  };
+
+  bp::class_<Motion>("motion", bp::init<double, double>())
+      .def("set_priority", &Motion::SetPriority)
+      .def("finished", &Motion::Finished)
+      .def("set_start", &Motion::SetStart);
   bp::class_<EEFPositionMotionWrapper, bp::bases<Motion>>(
       "EEFPositionMotion", bp::init<size_t, ConstRefVector3b,
                                     const pinocchio::SE3 &, double, double>())
@@ -254,21 +272,37 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
       .def_readonly("dim", &COMMotionWrapper::dim_)
       .def_readonly("trajectory", &COMMotionWrapper::trajectory_);
 
+  bp::class_<JointMotionWrapper, bp::bases<Motion>>(
+      "JointMotion", bp::init<ConstRefVectorXi, double, double>())
+      .def("set_trajectory", &JointMotionWrapper::SetTrajectorySpline)
+      .def("get_jacobian", &JointMotionWrapper::GetJacobian)
+      .def("get_desired_acceleration",
+           &JointMotionWrapper::GetDesiredAcceleration)
+      .def("get_acceleration", &JointMotionWrapper::GetAcceleration)
+      .def_readonly("dim", &JointMotionWrapper::dim_)
+      .def_readonly("trajectory", &JointMotionWrapper::trajectory_);
+
   bp::class_<std::vector<boost::shared_ptr<Motion>>>("MotionsVector")
       .def(bp::vector_indexing_suite<std::vector<boost::shared_ptr<Motion>>,
                                      true>());
 
+  bp::register_ptr_to_python<boost::shared_ptr<Motion>>();
   bp::register_ptr_to_python<boost::shared_ptr<EEFPositionMotionWrapper>>();
   bp::register_ptr_to_python<boost::shared_ptr<EEFRotationMotionWrapper>>();
   bp::register_ptr_to_python<boost::shared_ptr<COMMotionWrapper>>();
 
   bp::class_<WholeBodyController>(
       "WholeBodyController",
-      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double, size_t>())
+      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double>())
       .def("compute", &WholeBodyController::Compute)
       .def("get_force", &WholeBodyController::GetForce);
 
   bp::def("get_end_of_motion", &GetEndOfMotion,
+          (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
+           bp::arg("motions"), bp::arg("q")),
+          "Computes robot pose at the end of motion");
+
+  bp::def("get_end_of_motion_prioritized", &GetEndOfMotionPrioritized,
           (bp::arg("model"), bp::arg("data"), bp::arg("friction_cones"),
            bp::arg("motions"), bp::arg("q")),
           "Computes robot pose at the end of motion");
@@ -295,4 +329,17 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   bp::def("get_projected_wcm_with_torque", &GetProjectedWCMWithTorque,
           (bp::arg("friction_cones")), "Computes projected WCM");
+
+  bp::class_<TrajectoryPlanner>(
+      "TrajectoryPlanner",
+      bp::init<const pinocchio::Model &, size_t, const pinocchio::SE3 &>())
+      .def("start_computation", &TrajectoryPlanner::StartComputation)
+      .def("update_eef_trajectory", &TrajectoryPlanner::UpdateEEFTrajectory)
+      .def_readonly("com_xy", &TrajectoryPlanner::com_xy_)
+      .def_readonly("q", &TrajectoryPlanner::q_)
+      .def("motions", &TrajectoryPlanner::Motions)
+      .def("computation_started", &TrajectoryPlanner::ComputationStarted)
+      .def("computation_done", &TrajectoryPlanner::ComputationDone)
+      .def("update_started", &TrajectoryPlanner::UpdateStarted)
+      .def("update_done", &TrajectoryPlanner::UpdateDone);
 }

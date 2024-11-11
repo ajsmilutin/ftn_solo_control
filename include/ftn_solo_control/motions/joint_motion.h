@@ -1,20 +1,18 @@
 #pragma once
 
 #include <ftn_solo_control/motions/motion.h>
-// common includes
-#include <pinocchio/algorithm/frames.hpp>
 // ftn_solo_control
 #include <ftn_solo_control/trajectories/trajectory.h>
 #include <ftn_solo_control/types/common.h>
 
 namespace ftn_solo_control {
-class EEFRotationMotion
-    : public MotionWithTrajectory<Trajectory<Eigen::Matrix3d, RefMatrix3d,
+class JointMotion
+    : public MotionWithTrajectory<Trajectory<Eigen::VectorXd, RefVectorXd,
                                              Eigen::VectorXd, RefVectorXd>> {
 public:
-  EEFRotationMotion(size_t eef_index, double Kp = 100, double Kd = 50);
+  JointMotion(ConstRefVectorXi joints, double Kp = 100, double Kd = 50);
 
-  Eigen::VectorXd GetPositionError(const RefMatrix3d pos,
+  Eigen::VectorXd GetPositionError(const RefVectorXd pos,
                                    const pinocchio::Model &model,
                                    pinocchio::Data &data, ConstRefVectorXd q,
                                    ConstRefVectorXd qv) const override;
@@ -29,12 +27,12 @@ public:
                               ConstRefVectorXd qv) const override;
 
   Eigen::VectorXd GetAcceleration(const pinocchio::Model &model,
-                                  pinocchio::Data &data,
-                                  ConstRefVectorXd q,
+                                  pinocchio::Data &data, ConstRefVectorXd q,
                                   ConstRefVectorXd qv) const override;
 
 protected:
-  size_t eef_index_;
+  VectorXi indexes_6_;
+  VectorXi indexes_7_;
 };
 
 } // namespace ftn_solo_control

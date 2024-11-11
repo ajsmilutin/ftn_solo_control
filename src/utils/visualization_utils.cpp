@@ -43,6 +43,8 @@ GetSimpleConeMarkers(const SimpleConvexCone &cone,
   return marker;
 }
 
+
+
 } // namespace
 
 void InitVisualizationPublisher() {
@@ -57,10 +59,10 @@ void PublishConeMarker(const FrictionCone &cone,
                        double size) {
   visualization_msgs::msg::MarkerArray all_markers;
   std_msgs::msg::ColorRGBA color;
-  color.r = 0.8;
-  color.g = 0;
-  color.b = 1;
-  color.a = 0.5;
+  color.r = 220/255.0;
+  color.g = 234/255.0;
+  color.b = 250/255.0;
+  color.a = 0.8;
   all_markers.markers.push_back(std::move(GetSimpleConeMarkers(
       cone.primal_, ToPoint(cone.GetPosition()),
       (boost::format(ns_format_string) % "primal" % cone.GetNum()).str(), color,
@@ -76,6 +78,15 @@ void PublishConeMarker(const FrictionCone &cone,
         size)));
   }
   publisher->publish(all_markers);
+}
+
+std_msgs::msg::ColorRGBA MakeColor(double r, double g, double b, double a){
+  std_msgs::msg::ColorRGBA msg;
+  msg.r = r;
+  msg.g = g;
+  msg.b = b;
+  msg.a = a;
+  return msg;
 }
 
 } // namespace ftn_solo_control

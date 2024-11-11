@@ -10,13 +10,17 @@ EEFPositionMotion::EEFPositionMotion(size_t eef_index, ConstRefVector3b selected
 
 Eigen::VectorXd EEFPositionMotion::GetPositionError(const RefVectorXd pos,
                                                   const pinocchio::Model &model,
-                                                  pinocchio::Data &data) const {
+                                                  pinocchio::Data &data,
+                                          ConstRefVectorXd q,
+                                          ConstRefVectorXd qv) const {
   return pos - origin_.actInv(data.oMf[eef_index_].translation())(indexes_);
 }
 
 Eigen::VectorXd EEFPositionMotion::GetVelocityError(const RefVectorXd vel,
                                                   const pinocchio::Model &model,
-                                                  pinocchio::Data &data) const {
+                                                  pinocchio::Data &data,
+                                          ConstRefVectorXd q,
+                                          ConstRefVectorXd qv) const {
 
   return vel - (origin_.rotation().transpose() *
                 (pinocchio::getFrameVelocity(
@@ -38,7 +42,9 @@ Eigen::MatrixXd EEFPositionMotion::GetJacobian(const pinocchio::Model &model,
 }
 
 Eigen::VectorXd EEFPositionMotion::GetAcceleration(const pinocchio::Model &model,
-                                                 pinocchio::Data &data) const {
+                                                 pinocchio::Data &data,
+                                          ConstRefVectorXd q,
+                                          ConstRefVectorXd qv) const {
   return (origin_.rotation().transpose() *
           pinocchio::getFrameAcceleration(
               model, data, eef_index_,

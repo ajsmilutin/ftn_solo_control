@@ -19,17 +19,21 @@ public:
 
   Eigen::VectorXd GetPositionError(const RefVectorXd pos,
                                    const pinocchio::Model &model,
-                                   pinocchio::Data &data) const override;
-  virtual Eigen::VectorXd
-  GetVelocityError(const RefVectorXd vel, const pinocchio::Model &model,
-                   pinocchio::Data &data) const override;
+                                   pinocchio::Data &data, ConstRefVectorXd q,
+                                   ConstRefVectorXd qv) const override;
+  virtual Eigen::VectorXd GetVelocityError(const RefVectorXd vel,
+                                           const pinocchio::Model &model,
+                                           pinocchio::Data &data,
+                                           ConstRefVectorXd q,
+                                           ConstRefVectorXd qv) const override;
 
   Eigen::MatrixXd GetJacobian(const pinocchio::Model &model,
                               pinocchio::Data &data, ConstRefVectorXd q,
                               ConstRefVectorXd qv) const override;
 
   Eigen::VectorXd GetAcceleration(const pinocchio::Model &model,
-                                  pinocchio::Data &data) const override;
+                                  pinocchio::Data &data, ConstRefVectorXd q,
+                                  ConstRefVectorXd qv) const override;
 
 protected:
   size_t eef_index_;

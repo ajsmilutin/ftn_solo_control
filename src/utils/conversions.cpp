@@ -7,12 +7,22 @@
 
 namespace ftn_solo_control {
 
+namespace {
+template <class T> T ToRosVector(ConstRefVector3d vector) {
+  T ros_vector;
+  ros_vector.x = vector.x();
+  ros_vector.y = vector.y();
+  ros_vector.z = vector.z();
+  return ros_vector;
+}
+} // namespace
+
 geometry_msgs::msg::Point ToPoint(ConstRefVector3d vector) {
-  geometry_msgs::msg::Point point;
-  point.x = vector.x();
-  point.y = vector.y();
-  point.z = vector.z();
-  return point;
+  return ToRosVector<geometry_msgs::msg::Point>(vector);
+}
+
+geometry_msgs::msg::Vector3 ToVector(ConstRefVector3d vector) {
+  return ToRosVector<geometry_msgs::msg::Vector3>(vector);
 }
 
 geometry_msgs::msg::Pose ToPose(const pinocchio::SE3 &pose) {

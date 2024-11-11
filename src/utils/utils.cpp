@@ -37,11 +37,11 @@ pinocchio::SE3 GetTouchingPlacement(const pinocchio::Model &model,
          pose;
 }
 
-void GetConstraintJacobian(
-    const pinocchio::Model &model, pinocchio::Data &data,
-    const FrictionConeMap &friction_cones, RefMatrixXd constraint,
-    std::map<size_t, pinocchio::SE3> *touching_poses,
-    std::map<size_t, pinocchio::SE3> *placements) {
+void GetConstraintJacobian(const pinocchio::Model &model, pinocchio::Data &data,
+                           const FrictionConeMap &friction_cones,
+                           RefMatrixXd constraint,
+                           std::map<size_t, pinocchio::SE3> *touching_poses,
+                           std::map<size_t, pinocchio::SE3> *placements) {
 
   std::map<size_t, pinocchio::SE3> poses;
   std::transform(friction_cones.cbegin(), friction_cones.cend(),
@@ -84,12 +84,11 @@ Eigen::MatrixXd GetContactJacobian(const pinocchio::Model &model,
       .topRows<3>();
 }
 
-void GetConstraintJacobian(
-    const pinocchio::Model &model, pinocchio::Data &data,
-    const std::map<size_t, pinocchio::SE3> &poses,
-    RefMatrixXd constraint,
-    std::map<size_t, pinocchio::SE3> *touching_poses,
-    std::map<size_t, pinocchio::SE3> *placements) {
+void GetConstraintJacobian(const pinocchio::Model &model, pinocchio::Data &data,
+                           const std::map<size_t, pinocchio::SE3> &poses,
+                           RefMatrixXd constraint,
+                           std::map<size_t, pinocchio::SE3> *touching_poses,
+                           std::map<size_t, pinocchio::SE3> *placements) {
   size_t i = 0;
   size_t num_constraints = poses.size() * 3;
   pinocchio::SE3 *touching_pose_ptr = nullptr;
@@ -120,11 +119,12 @@ size_t GetMotionsDim(const std::vector<boost::shared_ptr<Motion>> &motions) {
 void GetMotionsJacobian(const pinocchio::Model &model, pinocchio::Data &data,
                         ConstRefVectorXd q, ConstRefVectorXd qv,
                         const std::vector<boost::shared_ptr<Motion>> &motions,
-                        RefMatrixXd jacobian) {
+                        RefMatrixXd jacobian, bool weighted) {
   size_t start_row = 0;
   for (const auto &motion : motions) {
+    double weight = weighted ? motion->GetWeight() : 1;
     jacobian.middleRows(start_row, motion->dim_) =
-        motion->GetJacobian(model, data, q, qv);
+        weight * motion->GetJacobian(model, data, q, qv);
     start_row += motion->dim_;
   }
 }

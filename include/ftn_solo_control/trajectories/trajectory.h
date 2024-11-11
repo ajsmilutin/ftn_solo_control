@@ -15,9 +15,7 @@ public:
   typedef PosTypeRef PositionTypeRef;
   typedef VelType VelocityType;
   typedef VelTypeRef VelocityTypeRef;
-  Trajectory()
-      : finished_(false), loop_(false), points_({}), times_({}),
-        start_time_(-1), end_time_(-1) {}
+  Trajectory() : loop_(false) { Reset(); }
   void SetStart(double t) {
     start_time_ = t;
     if (times_.size() > 0) {
@@ -25,9 +23,24 @@ public:
     }
   }
 
+  void Reset() {
+    finished_ = false;
+    points_ = {};
+    times_ = {};
+    start_time_ = end_time_ = -1;
+  }
+
   virtual void AddPoint(const PosTypeRef point, double t) {
     times_.push_back(t);
     points_.push_back(point);
+  }
+
+  virtual void PopPoint() {
+    times_.pop_back();
+    points_.pop_back();
+    if (start_time_ > 0 && times_.size() > 0) {
+      end_time_ = start_time_ + times_.back();
+    }
   }
 
   virtual void Get(double t, PosTypeRef pos, VelTypeRef vel, VelTypeRef acc) {
@@ -72,7 +85,7 @@ protected:
   virtual void StartPoint(double t, PosTypeRef pos, VelTypeRef val,
                           VelTypeRef acc) const = 0;
   virtual void EndPoint(double t, PosTypeRef pos, VelTypeRef al,
-                      VelTypeRef acc) const = 0;
+                        VelTypeRef acc) const = 0;
   virtual void Interpolated(double t, PosTypeRef pos, VelTypeRef val,
                             VelTypeRef acc) const = 0;
   bool loop_;
