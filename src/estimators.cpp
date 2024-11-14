@@ -279,7 +279,6 @@ void FixedPointsEstimator::PublishState(size_t seconds,
   size_t num_joints = estimated_q_.size() - 7;
   joint_state.position.resize(num_joints);
   joint_state.velocity.resize(num_joints);
-  joint_state.effort.resize(num_joints);
   const auto &joint_names = model_.names;
   joint_state.name = std::vector<std::string>(joint_names.end() - num_joints,
                                               joint_names.end());
@@ -287,9 +286,12 @@ void FixedPointsEstimator::PublishState(size_t seconds,
       estimated_q_.tail(num_joints);
   Eigen::VectorXd::Map(&joint_state.velocity[0], num_joints) =
       estimated_qv_.tail(num_joints);
-  Eigen::VectorXd::Map(&joint_state.effort[0], num_joints) = effort_;
-  joint_state_publisher->publish(joint_state);
+  if (effort_.size() > 0) {
+    joint_state.effort.resize(num_joints);
+    Eigen::VectorXd::Map(&joint_state.effort[0], num_joints) = effort_;
+  }
 
+  joint_state_publisher->publish(joint_state);
   auto world_T_base = geometry_msgs::msg::TransformStamped();
   world_T_base.header.stamp = joint_state.header.stamp;
   world_T_base.header.frame_id = "world";
