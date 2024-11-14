@@ -71,7 +71,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
   d.tail(estimator.NumJoints()) =
       -max_torque_ * Eigen::VectorXd::Ones(estimator.NumJoints());
-  Eigen::VectorXd u = 1e20 * Eigen::VectorXd::Ones(qp_.model.n_in);
+  Eigen::VectorXd u = 1e5 * Eigen::VectorXd::Ones(qp_.model.n_in);
   u.tail(estimator.NumJoints()) =
       max_torque_ * Eigen::VectorXd::Ones(estimator.NumJoints());
   qp_.init(proxsuite::nullopt, proxsuite::nullopt, proxsuite::nullopt,
