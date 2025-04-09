@@ -105,7 +105,6 @@ void GetConstraintJacobian(const pinocchio::Model &model, pinocchio::Data &data,
                            touching_pose_ptr, placement_ptr);
     ++i;
   }
-  constraint;
 }
 
 size_t GetMotionsDim(const std::vector<boost::shared_ptr<Motion>> &motions) {

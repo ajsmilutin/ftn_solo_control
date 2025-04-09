@@ -65,6 +65,7 @@ void PublishIK(double t, ConstRefVectorXd q,
 
 void PublishWCM(const ConvexHull2D &wcm, ConstRefVector2d com,
                 const std_msgs::msg::ColorRGBA &color,
+                const std_msgs::msg::ColorRGBA &com_color,
                 const std::string ns = "") {
   visualization_msgs::msg::MarkerArray markers;
   visualization_msgs::msg::Marker marker;
@@ -91,7 +92,7 @@ void PublishWCM(const ConvexHull2D &wcm, ConstRefVector2d com,
   ++marker.id;
   marker.pose.position = ToPoint(Eigen::Vector3d(com[0], com[1], 0.001));
   marker.scale = ToVector(Eigen::Vector3d::Constant(0.02));
-  marker.color = MakeColor(1.0, 1.0, 0.0);
+  marker.color = com_color;
   marker.ns = "com";
   if (!ns.empty()) {
     marker.ns = ns + "_ " + marker.ns;
@@ -163,17 +164,19 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   com_xy_ = ComputeCoMPos(next_wcm, origin_.translation().head<2>());
 
 #ifndef SKIP_PUBLISH_MARKERS
-  PublishWCM(next_wcm, com_pos.head<2>(), MakeColor(0.0, 1.0, 1.0, 0.5), "wcm");
+  PublishWCM(next_wcm, com_pos.head<2>(), MakeColor(0.0, 1.0, 1.0, 0.5), MakeColor(1.0, 1.0, 0.0, 1.0), "wcm");
 #endif
-
   com_trajectory_ = boost::make_shared<PieceWiseLinearPosition>();
   Eigen::VectorXd tmp_pos = com_pos.head<2>();
   com_trajectory_->AddPoint(tmp_pos, 0);
   com_trajectory_->AddPoint(com_xy_, duration);
   boost::shared_ptr<COMMotion> com_motion = boost::make_shared<COMMotion>(
       (Vector3b() << true, true, false).finished(), pinocchio::SE3::Identity(),
-      300.5, 1.5);
+      // unitree
+      // 200.0, 1.0);
+      400.0, 15.0);
   com_motion->SetTrajectory(com_trajectory_);
+  
 
   base_trajectory_ = boost::make_shared<PieceWiseLinearPosition>();
   base_trajectory_->AddPoint(origin_.actInv(base_pose).translation().tail<1>(),
@@ -183,7 +186,9 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   boost::shared_ptr<EEFPositionMotion> base_linear_motion =
       boost::make_shared<EEFPositionMotion>(
           base_index_, (Vector3b() << false, false, true).finished(), origin_,
-          400.0, 5.0);
+          // Unitreee
+          // 100.0, 2.0);
+          200.0, 30.0);
   base_linear_motion->SetTrajectory(base_trajectory_);
   base_linear_motion->SetPriority(1, 1.0);
   rotation_trajectory_ = boost::make_shared<PieceWiseLinearRotation>();
@@ -193,7 +198,9 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   rotation_trajectory_->AddPoint(tmp_orientation, duration);
 
   boost::shared_ptr<EEFRotationMotion> base_angular_motion =
-      boost::make_shared<EEFRotationMotion>(base_index_, 600, 2.5);
+      // Unitree
+      //boost::make_shared<EEFRotationMotion>(base_index_, 200, 1);
+      boost::make_shared<EEFRotationMotion>(base_index_,300, 20);
   base_angular_motion->SetTrajectory(rotation_trajectory_);
   base_angular_motion->SetPriority(1, 0.5);
 
@@ -205,22 +212,22 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
     pinocchio::computeGeneralizedGravity(model_, data_, q_);
     next_wcm = GetProjectedWCMWithTorque(model_, data_, next_friction_cones,
                                          max_torque);
-    new_com = data_.com[0];
-    new_com(2) = 1;
-    if (((next_wcm.Equations() * new_com).array() > (0.025 - 1e-4)).all()) {
-      break;
-    }
     com_xy_ = ComputeCoMPos(next_wcm, origin_.translation().head<2>());
     com_trajectory_->PopPoint();
     com_trajectory_->AddPoint(com_xy_, duration);
+    new_com = data_.com[0];
+    new_com(2) = 1;
+    if (((next_wcm.Equations() * new_com).array() > (0.06 - 1e-4)).all()) {
+      break;
+    }
   }
 #ifndef SKIP_PUBLISH_MARKERS
   PublishIK(t, q_, model_.names);
-  PublishWCM(next_wcm, new_com.head<2>(), MakeColor(1.0, 0.0, 0.5, 0.5), "wct");
+  PublishWCM(next_wcm, new_com.head<2>(), MakeColor(1.0, 0.0, 0.0, 0.5), MakeColor(0.0, 1.0, 1.0, 0.5), "wct");
 #endif
 
-  com_trajectory_->PopPoint();
-  com_trajectory_->AddPoint(data_.com[0].head<2>(), duration);
+  // com_trajectory_->PopPoint();
+  // com_trajectory_->AddPoint(com_xy_, duration);
   const auto &base_pose_goal = data_.oMf[base_index_];
   base_trajectory_->PopPoint();
   base_trajectory_->AddPoint(
@@ -239,7 +246,8 @@ Eigen::Vector2d TrajectoryPlanner::ComputeCoMPos(const ConvexHull2D &wcm,
       proxsuite::proxqp::HessianType::Diagonal);
   qp.init(Eigen::Matrix2d::Identity(), -com_pos, proxsuite::nullopt,
           proxsuite::nullopt, wcm.Equations().leftCols<2>(),
-          Eigen::VectorXd::Constant(qp.model.n_in, 0.05) -
+          // UNITREEE was 0.04
+          Eigen::VectorXd::Constant(qp.model.n_in, 0.08) -
               wcm.Equations().rightCols<1>(),
           Eigen::VectorXd::Constant(qp.model.n_in, 1e10));
   qp.settings.initial_guess = proxsuite::proxqp::InitialGuessStatus::WARM_START;

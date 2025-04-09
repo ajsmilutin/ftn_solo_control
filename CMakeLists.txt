@@ -3,10 +3,7 @@ project(ftn_solo_control)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PYTHON_COMPONENTS Interpreter Development NumPy)
-
-
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -25,6 +22,7 @@ find_package(proxsuite REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 include(cmake/python.cmake)
 findpython(REQUIRED)
@@ -55,9 +53,13 @@ include_directories(${eigenpy_INCLUDE_DIRS})
 include_directories(${visualization_msgs_INCLUDE_DIRS})
 include_directories(${proxsuite_INCLUDE_DIRS})
 
-#add_compile_definitions(SKIP_PUBLISH_MARKERS)
 # create the lib
 add_library(ftn_solo_control_py SHARED 
+  src/iir/Biquad.cpp
+  src/iir/Butterworth.cpp
+  src/iir/Cascade.cpp
+  src/iir/PoleFilter.cpp
+  src/iir/State.cpp
   src/controllers/whole_body.cpp
   src/motions/com_motion.cpp
   src/motions/eef_rotation_motion.cpp
@@ -80,7 +82,8 @@ add_library(ftn_solo_control_py SHARED
 
 target_link_libraries(ftn_solo_control_py
                       ${Boost_LIBRARIES}
-                      proxsuite::proxsuite-vectorized)
+                      proxsuite::proxsuite-vectorized
+                      yaml-cpp::yaml-cpp)
 # target_compile_options(ftn_solo_control_py PUBLIC "-march=native")
 ament_target_dependencies(ftn_solo_control_py rclcpp PythonLibs Eigen3 eigenpy visualization_msgs geometry_msgs tf2 tf2_ros)
 target_include_directories(ftn_solo_control_py SYSTEM PRIVATE ${PYTHON_INCLUDE_DIR})

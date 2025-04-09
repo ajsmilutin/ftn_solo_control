@@ -53,5 +53,6 @@ typedef std::vector<Eigen::VectorXd, Eigen::aligned_allocator<Eigen::VectorXd>>
 typedef std::vector<Eigen::MatrixXd, Eigen::aligned_allocator<Eigen::MatrixXd>>
     Matrices;
 
-const double kRadius = 0.018;
+// const double kRadius = 0.016;
+const double kRadius = 0.02;
 } // namespace ftn_solo_control

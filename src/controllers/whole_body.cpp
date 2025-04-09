@@ -3,6 +3,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <yaml-cpp/yaml.h>
 // FTN solo includes
 #include <ftn_solo_control/utils/conversions.h>
 #include <ftn_solo_control/utils/utils.h>
@@ -24,6 +25,28 @@ static rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
 static size_t index = 0;
 constexpr size_t publish_on = 15;
 
+Eigen::VectorXd GetVectorFromConfig(const size_t length,
+                                    const YAML::Node &config,
+                                    const std::string &key,
+                                    const double default_value = 0) {
+  if (config[key]) {
+    const auto &cfg = config[key];
+    if (cfg.IsScalar()) {
+      return Eigen::VectorXd::Constant(length, cfg.as<double>());
+    } else {
+      return Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
+          cfg.as<std::vector<double>>().data(), length);
+    }
+  } else {
+    return Eigen::VectorXd::Constant(length, default_value);
+  }
+}
+
+#define READ_DOUBLE_CONFIG(config_node, key, target)                           \
+  if (config_node[#key]) {                                                     \
+    target = config_node[#key].as<double>();                                   \
+  }
+
 } // namespace
 
 void InitWholeBodyPublisher() {
@@ -35,7 +58,8 @@ void InitWholeBodyPublisher() {
 
 WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
                                          const FrictionConeMap &friction_cones,
-                                         double max_torque)
+                                         double max_torque,
+                                         const std::string &config)
     : max_torque_(max_torque),
       qp_(estimator.NumJoints() + estimator.NumDoF() +
               estimator.NumContacts() * 3,
@@ -43,28 +67,44 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
           estimator.NumJoints() + TotalSides(friction_cones) +
               estimator.NumContacts(),
           false, proxsuite::proxqp::HessianType::Dense) {
+  // Parse YAML configuration
+  YAML::Node config_node = YAML::Load(config);
+  READ_DOUBLE_CONFIG(config_node, lambda_tangential, config_.lambda_tangential);
+  READ_DOUBLE_CONFIG(config_node, lambda_kd, config_.lambda_kd);
+  READ_DOUBLE_CONFIG(config_node, lambda_torque, config_.lambda_torque);
+  READ_DOUBLE_CONFIG(config_node, smooth, config_.smooth);
+  config_.B = GetVectorFromConfig(estimator.NumJoints(), config_node, "B");
+  config_.Fv = GetVectorFromConfig(estimator.NumJoints(), config_node, "Fv");
+  config_.sigma =
+      GetVectorFromConfig(estimator.NumJoints(), config_node, "sigma");
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(qp_.model.n_in, qp_.model.dim);
   size_t start_row = 0;
   size_t start_col = estimator.NumDoF() + estimator.NumJoints();
-  Eigen::VectorXd d = 0.1 * Eigen::VectorXd::Ones(qp_.model.n_in);
+  Eigen::VectorXd d = 0.5 * Eigen::VectorXd::Ones(qp_.model.n_in);
   H_ = 0.001 * Eigen::MatrixXd::Identity(qp_.model.dim, qp_.model.dim);
-  double lambda_tangential = 0.01;
+  std::cout<<"AAAA"<< std::endl;
   for (const auto &cone : friction_cones) {
     eefs_.push_back(cone.first);
+    std::cout<<"AAAA" << cone.first << std::endl;
     forces_.emplace(cone.first, Eigen::Vector3d::Zero());
+    tangential_.emplace(
+        cone.first,
+        cone.second.GetPose().rotation().leftCols<2>() *
+            cone.second.GetPose().rotation().leftCols<2>().transpose());
+    normal_.emplace(
+        cone.first,
+        cone.second.GetPose().rotation().rightCols<1>() *
+            cone.second.GetPose().rotation().rightCols<1>().transpose());
     C.block(start_row, start_col, cone.second.GetNumSides(), 3) =
         cone.second.primal_.face_;
     start_row += cone.second.GetNumSides();
     C.block<1, 3>(start_row, start_col) =
         cone.second.GetPose().rotation().col(2).transpose();
-    d(start_row) = 0.25;
-    // Penalize tangential forces
+    d(start_row) = 0.5;
     H_.block<3, 3>(start_col, start_col) =
-        lambda_tangential *
-        cone.second.GetPose().rotation().bottomRows<2>().transpose() *
-        cone.second.GetPose().rotation().bottomRows<2>();
+        config_.lambda_tangential * tangential_.at(cone.first);
     ++start_row;
-    start_col += 3;
+    start_col += 3;    
   }
   C.block(start_row, estimator.NumDoF(), estimator.NumJoints(),
           estimator.NumJoints()) =
@@ -82,7 +122,9 @@ Eigen::VectorXd WholeBodyController::Compute(
     double t, const pinocchio::Model &model, pinocchio::Data &data,
     FixedPointsEstimator &estimator,
     const std::vector<boost::shared_ptr<Motion>> &motions,
-    ConstRefVectorXd old_torque) {
+    ConstRefVectorXd old_torque, const double alpha,
+    size_t new_contact,
+    size_t ending_contact) {
   size_t motions_dim = GetMotionsDim(motions);
   Eigen::MatrixXd motions_jacobian =
       Eigen::MatrixXd(motions_dim, estimator.NumDoF());
@@ -91,32 +133,50 @@ Eigen::VectorXd WholeBodyController::Compute(
   Eigen::VectorXd motions_ades = Eigen::VectorXd(motions_dim);
   size_t start_row = 0;
   for (const auto &motion : motions) {
+    const auto result = motion->GetDesiredVelocityAndAcceleration(
+        t, model, data, estimator.estimated_q_, estimator.estimated_qv_);
     motions_ades.segment(start_row, motion->dim_) =
-        motion->GetDesiredAcceleration(t, model, data, estimator.estimated_q_,
-                                       estimator.estimated_qv_) -
-        motion->GetAcceleration(model, data, estimator.estimated_q_,
-                                estimator.estimated_qv_);
+        result.col(1) - motion->GetAcceleration(model, data,
+                                                estimator.estimated_q_,
+                                                estimator.estimated_qv_);
     start_row += motion->dim_;
   }
-  double lambda_kd = 0.0;
-  double Kd = 1;
+  
+  size_t start_col = estimator.NumDoF() + estimator.NumJoints();
+  const double eps_start = 1 - 1 / (1 + exp(-(alpha - 0.2) / 0.03));
+  const double eps_end = 1 / (1 + exp(-(alpha - 0.8) / 0.03));
+  for (const auto &eef : eefs_) {
+    if (new_contact == eef) {
+      std::cout<<"NNNNNNNNNNNNNNNNNNN"<< new_contact << std::endl;
+      H_.block<3, 3>(start_col, start_col) =
+          config_.lambda_tangential * tangential_.at(eef) +
+          config_.lambda_tangential * eps_start * normal_.at(eef);
+    } else if (ending_contact == eef) {
+      std::cout<<"EEEEEEEEENNNNNNNNNNN"<< ending_contact << std::endl;
+      H_.block<3, 3>(start_col, start_col) =
+          config_.lambda_tangential * tangential_.at(eef) +
+          config_.lambda_tangential * eps_end * normal_.at(eef);
+    }
+    start_col += 3;
+  }
+  
 
+  double Kd = 1;
   H_.topLeftCorner(estimator.NumDoF(), estimator.NumDoF()) =
       motions_jacobian.transpose() * motions_jacobian;
   H_.block(6, 6, estimator.NumJoints(), estimator.NumJoints()) +=
-      lambda_kd *
+      config_.lambda_kd *
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
-  double lambda_torque = 0.03;
   H_.block(estimator.NumDoF(), estimator.NumDoF(), estimator.NumJoints(),
            estimator.NumJoints()) =
-      lambda_torque *
+      config_.lambda_torque *
       Eigen::MatrixXd::Identity(estimator.NumJoints(), estimator.NumJoints());
   Eigen::VectorXd g = Eigen::VectorXd::Zero(qp_.model.dim);
   g.head(estimator.NumDoF()) = -motions_jacobian.transpose() * motions_ades;
-  g.segment(6, estimator.NumJoints()) +=
-      lambda_kd * Kd * estimator.velocity_.tail(estimator.NumJoints());
+  g.segment(6, estimator.NumJoints()) -=
+      config_.lambda_kd * Kd * estimator.velocity_.tail(estimator.NumJoints());
   g.segment(estimator.NumDoF(), estimator.NumJoints()) =
-      -lambda_torque * old_torque;
+      -config_.lambda_torque * old_torque;
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(qp_.model.n_eq, qp_.model.dim);
   Eigen::VectorXd b = Eigen::VectorXd::Zero(qp_.model.n_eq);
   // Multi-body dynamics constraint
@@ -126,6 +186,13 @@ Eigen::VectorXd WholeBodyController::Compute(
   A.block(0, estimator.NumJoints() + estimator.NumDoF(), estimator.NumDoF(),
           estimator.NumContacts() * 3) = -estimator.constraint_.transpose();
   b.head(estimator.NumDoF()) = -data.nle;
+
+  Eigen::VectorXd qd_des = estimator.estimated_qv_.tail(estimator.NumJoints());
+  Eigen::VectorXd friction =
+      config_.B.array() * qd_des.array() +
+      config_.Fv.array() * (qd_des.array() / config_.sigma.array()).atan() /
+          M_PI_2;
+  b.segment(6, estimator.NumJoints()) -= friction;
   // Constraint
   A.block(estimator.NumDoF(), 0, 3 * estimator.NumContacts(),
           estimator.NumDoF()) = estimator.constraint_;
@@ -142,7 +209,10 @@ Eigen::VectorXd WholeBodyController::Compute(
   PublishForceMarker(estimator);
   estimator.SetEffort(
       qp_.results.x.segment(estimator.NumDoF(), estimator.NumJoints()));
-  return qp_.results.x.segment(estimator.NumDoF(), estimator.NumJoints());
+
+  return config_.smooth *
+             qp_.results.x.segment(estimator.NumDoF(), estimator.NumJoints()) +
+         (1 - config_.smooth) * old_torque;
 }
 
 void WholeBodyController::PublishForceMarker(

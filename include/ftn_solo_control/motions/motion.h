@@ -28,6 +28,13 @@ public:
     return Eigen::VectorXd::Zero(dim_);
   }
 
+  virtual Eigen::MatrixXd
+  GetDesiredVelocityAndAcceleration(double t, const pinocchio::Model &model,
+                                    pinocchio::Data &data, ConstRefVectorXd q,
+                                    ConstRefVectorXd qv) const {
+    return Eigen::MatrixXd::Zero(dim_, 2);
+  }
+
   virtual Eigen::MatrixXd GetJacobian(const pinocchio::Model &model,
                                       pinocchio::Data &data, ConstRefVectorXd q,
                                       ConstRefVectorXd qv) const {
@@ -49,6 +56,8 @@ public:
   }
 
   virtual void SetStart(double t) {}
+
+  virtual double GetAlpha(double t) { return 0;}
 
   virtual bool Finished() const { return false; }
 
@@ -104,8 +113,24 @@ public:
     auto vel = trajectory_->ZeroVelocity();
     auto acc = trajectory_->ZeroVelocity();
     trajectory_->Get(t, pos, vel, acc);
-    return acc + Kp_ * GetPositionError(pos, model, data, q, qv) +
-           Kd_ * GetVelocityError(vel, model, data, q, qv);
+    vel = vel + Kp_ * GetPositionError(pos, model, data, q, qv);
+    return acc +
+          +Kd_ * GetVelocityError(vel, model, data, q, qv);
+  }
+
+  Eigen::MatrixXd
+  GetDesiredVelocityAndAcceleration(double t, const pinocchio::Model &model,
+                                    pinocchio::Data &data, ConstRefVectorXd q,
+                                    ConstRefVectorXd qv) const {
+    auto pos = trajectory_->ZeroPosition();
+    auto vel = trajectory_->ZeroVelocity();
+    auto acc = trajectory_->ZeroVelocity();
+    trajectory_->Get(t, pos, vel, acc);
+    Eigen::MatrixXd result = Eigen::MatrixXd::Zero(dim_, 2);
+    result.col(0) = vel + Kp_ * GetPositionError(pos, model, data, q, qv);
+    result.col(1) =
+        acc + Kd_ * GetVelocityError(result.col(0), model, data, q, qv);
+    return result;
   }
 
   void SetTrajectory(const boost::shared_ptr<Trajectory> trajectory) {
@@ -125,6 +150,8 @@ public:
   void SetStart(double t) override { trajectory_->SetStart(t); }
 
   bool Finished() const override { return trajectory_->finished_; }
+
+  double GetAlpha(double t) override { return trajectory_->GetAlpha(t);}
 
 protected:
   VectorXi indexes_;
