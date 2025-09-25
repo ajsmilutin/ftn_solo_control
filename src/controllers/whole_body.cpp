@@ -80,12 +80,10 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(qp_.model.n_in, qp_.model.dim);
   size_t start_row = 0;
   size_t start_col = estimator.NumDoF() + estimator.NumJoints();
-  Eigen::VectorXd d = 0.5 * Eigen::VectorXd::Ones(qp_.model.n_in);
+  Eigen::VectorXd d = 0.1 * Eigen::VectorXd::Ones(qp_.model.n_in);
   H_ = 0.001 * Eigen::MatrixXd::Identity(qp_.model.dim, qp_.model.dim);
-  std::cout<<"AAAA"<< std::endl;
   for (const auto &cone : friction_cones) {
     eefs_.push_back(cone.first);
-    std::cout<<"AAAA" << cone.first << std::endl;
     forces_.emplace(cone.first, Eigen::Vector3d::Zero());
     tangential_.emplace(
         cone.first,
@@ -100,7 +98,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
     start_row += cone.second.GetNumSides();
     C.block<1, 3>(start_row, start_col) =
         cone.second.GetPose().rotation().col(2).transpose();
-    d(start_row) = 0.5;
+    d(start_row) = 0.25;
     H_.block<3, 3>(start_col, start_col) =
         config_.lambda_tangential * tangential_.at(cone.first);
     ++start_row;
@@ -147,12 +145,10 @@ Eigen::VectorXd WholeBodyController::Compute(
   const double eps_end = 1 / (1 + exp(-(alpha - 0.8) / 0.03));
   for (const auto &eef : eefs_) {
     if (new_contact == eef) {
-      std::cout<<"NNNNNNNNNNNNNNNNNNN"<< new_contact << std::endl;
       H_.block<3, 3>(start_col, start_col) =
           config_.lambda_tangential * tangential_.at(eef) +
           config_.lambda_tangential * eps_start * normal_.at(eef);
     } else if (ending_contact == eef) {
-      std::cout<<"EEEEEEEEENNNNNNNNNNN"<< ending_contact << std::endl;
       H_.block<3, 3>(start_col, start_col) =
           config_.lambda_tangential * tangential_.at(eef) +
           config_.lambda_tangential * eps_end * normal_.at(eef);

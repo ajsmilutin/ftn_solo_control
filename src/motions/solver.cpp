@@ -86,25 +86,25 @@ bool GetEndOfMotionPrioritized(
   Eigen::VectorXd lb = Eigen::VectorXd::Constant(model.nv, -1e10);
   const double kLimit = M_PI / 6;
   for (size_t index : {6, 9, 12, 15}) {
-    ub(index) = 1.0;
-    lb(index) = -1.0;
+    ub(index) = 0.9;
+    lb(index) = -0.9;
   }
   for (size_t index : {7, 10, 13, 16}) {
-    ub(index) = 3.5;
-    lb(index) = -1.5;
+    ub(index) = 1.45;
+    lb(index) = -1.45;
   }
   
-  for (size_t index : {8, 11, 14, 17}) {
-    ub(index) = -0.8;
-    lb(index) = -2.7;
-  }
   // for (size_t index : {8, 11, 14, 17}) {
-  //   if (q(index + 1) < 0) {
-  //     ub(index) = -kLimit;
-  //   } else {
-  //     lb(index) = kLimit;
-  //   }
+  //   ub(index) = -0.8;
+  //   lb(index) = -2.7;
   // }
+  for (size_t index : {8, 11, 14, 17}) {
+    if (q(index + 1) < 0) {
+      ub(index) = -kLimit;
+    } else {
+      lb(index) = kLimit;
+    }
+  }
 
   while (!solved && (++iteration) <= 1000) {
     pinocchio::framesForwardKinematics(model, data, q);

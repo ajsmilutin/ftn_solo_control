@@ -124,6 +124,7 @@ ConvexHull2D GetProjectedWCMWithTorque(const pinocchio::Model &model,
     start += 3;
   }
   const double mg = data.mass[0] * 9.81;
+  std::cout<<"MASSSSSSSSSSSS" << data.mass[0]<< std::endl;
   return GetProjectedWCM(friction_cones, torque_constraint, lb / mg, ub / mg);
 }
 

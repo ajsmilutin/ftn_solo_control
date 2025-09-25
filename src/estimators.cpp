@@ -230,8 +230,8 @@ void FixedPointsEstimator::SetData(double t, ConstRefVectorXd q,
       sensors.imu_data.attitude[2], sensors.imu_data.attitude[3]);
   measured_orientation_ = (initial_orientation_ * new_orientation).coeffs();
   estimated_q_.tail(num_joints_) = q;
-  // unitree
-  double alpha = 0; //0.95;
+  // unitree 0
+  double alpha = 0.95;
   estimated_qv_.tail(num_joints_) =
       alpha * estimated_qv_.tail(num_joints_) + (1 - alpha) * qv;
   sensor_angular_velocity_ = sensors.imu_data.angular_velocity;
@@ -358,7 +358,8 @@ void FixedPointsEstimator::EstimateInternal() {
     Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 2, 6);
     q0 = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3], estimated_q_[4],
                             estimated_q_[5]);
-    double alpha = 1.0;
+    double alpha = 1;
+    // 5.00
     Eigen::Vector3d quat_err =
         alpha *
         (q0.toRotationMatrix() *
@@ -382,7 +383,8 @@ void FixedPointsEstimator::EstimateInternal() {
 }
 
 void FixedPointsEstimator::EstimateVelocities() {
-  const double alpha = 1;
+  const double alpha = 2;
+  //2
   size_t num_constraints = poses_.size() * 3;
   Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 3, model_.nv);
   J.block<3, 3>(0, 3) =
