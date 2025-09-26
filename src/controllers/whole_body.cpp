@@ -24,6 +24,8 @@ static rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
 static size_t index = 0;
 constexpr size_t publish_on = 15;
 
+static std::unordered_set<size_t> all_eefs;
+
 } // namespace
 
 void InitWholeBodyPublisher() {
@@ -163,15 +165,22 @@ void WholeBodyController::PublishForceMarker(
   single_arrow.scale.x = 0.015;
   single_arrow.scale.y = 0.025;
   single_arrow.scale.z = 0.05;
-  for (size_t i = 0; i < eefs_.size(); ++i) {
-    single_arrow.ns = "force" + std::to_string(eefs_.at(i));
-    single_arrow.id = eefs_.at(i);
+  all_eefs.insert(eefs_.begin(), eefs_.end());
+  for (const auto id : all_eefs) {
+    single_arrow.id = id;
+    single_arrow.ns = "force" + std::to_string(id);
     single_arrow.points.clear();
-    single_arrow.points.push_back(
-        ToPoint(estimator.eef_positions_.segment<3>(3 * i)));
-    single_arrow.points.push_back(
-        ToPoint(estimator.eef_positions_.segment<3>(3 * i) +
-                0.025 * GetForce(eefs_.at(i))));
+    const auto it = std::find(eefs_.begin(), eefs_.end(), id);
+    if (it != eefs_.end()) {
+      size_t i = std::distance(eefs_.begin(), it);
+      single_arrow.points.push_back(
+          ToPoint(estimator.eef_positions_.segment<3>(3 * i)));
+      single_arrow.points.push_back(ToPoint(
+          estimator.eef_positions_.segment<3>(3 * i) + 0.025 * GetForce(id)));
+    } else {
+      single_arrow.points.push_back(ToPoint(Eigen::Vector3d::Zero()));
+      single_arrow.points.push_back(ToPoint(Eigen::Vector3d::Zero()));
+    }
     all_markers.markers.push_back(single_arrow);
   }
   publisher->publish(all_markers);
