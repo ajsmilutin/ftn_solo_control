@@ -1,8 +1,11 @@
 #include <ftn_solo_control/estimators.h>
 // Common includes
 #include <Eigen/Dense>
-#include <ftn_solo_control/types/common.h>
+#include <boost/python.hpp>
+#include <eigenpy/eigen-from-python.hpp>
+#include <eigenpy/eigenpy.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <math.h>
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/crba.hpp>
@@ -15,6 +18,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 // ftn solo includes
+#include <ftn_solo_control/types/common.h>
 #include <ftn_solo_control/utils/conversions.h>
 #include <ftn_solo_control/utils/utils.h>
 
@@ -29,6 +33,8 @@ static rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr
     pose_publisher;
 static rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
     joint_state_publisher;
+static rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr
+    twist_publisher;
 static std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
 
 static size_t index = 0;
@@ -53,13 +59,15 @@ visualization_msgs::msg::Marker GetPointMarker(ConstRefVector3d position,
 void PublishMarkers(const std::map<size_t, pinocchio::SE3> &poses,
                     const std::map<size_t, pinocchio::SE3> &touching_poses_,
                     const pinocchio::Data &data) {
-  if ((++index) % 50 != publish_on) {
+  if ((++index) % 10 != publish_on) {
     return;
   }
   visualization_msgs::msg::MarkerArray all_markers;
   int i = 0;
   geometry_msgs::msg::PoseArray poses_msg;
+  geometry_msgs::msg::TwistStamped twist_msg;
   poses_msg.header.frame_id = "world";
+
   for (const auto &position : poses) {
     all_markers.markers.push_back(
         GetPointMarker(position.second.translation(), 300 + (++i)));
@@ -88,35 +96,122 @@ void InitEstimatorPublisher() {
   joint_state_publisher =
       estimator_node->create_publisher<sensor_msgs::msg::JointState>(
           "joint_states", 10);
+  twist_publisher =
+      estimator_node->create_publisher<geometry_msgs::msg::TwistStamped>(
+          "base_twist", 10);
   tf_broadcaster =
       std::make_unique<tf2_ros::TransformBroadcaster>(estimator_node);
+}
+
+void ExposeEstimators() {
+  namespace bp = boost::python;
+  bp::class_<BaseEstimator>(
+      "BaseEstimator",
+      bp::init<double, pinocchio::Model &, pinocchio::Data &>())
+      .def("init", &BaseEstimator::Init)
+      .def("initialized", &BaseEstimator::Initialized)
+      .def("estimate", &BaseEstimator::Estimate)
+      .def_readonly("estimated_q", &BaseEstimator::estimated_q_)
+      .def_readonly("estimated_qv", &BaseEstimator::estimated_qv_)
+      .def("publish_state", &BaseEstimator::PublishState)
+      .def("set_effort", &BaseEstimator::SetEffort);
+
+  bp::class_<FixedPointsEstimator, bp::bases<BaseEstimator>>(
+      "FixedPointsEstimator",
+      bp::init<double, pinocchio::Model &, pinocchio::Data &,
+               const std::vector<size_t> &>())
+      .def("un_fix", &FixedPointsEstimator::UnFix)
+      .def("set_fixed", &FixedPointsEstimator::SetFixed)
+      .def("get_friction_cones", &FixedPointsEstimator::GetFrictionCones,
+           (bp::arg("mu") = 1.0, bp::arg("num_sides") = 4))
+      .def("create_friction_cone", &FixedPointsEstimator::CreateFrictionCone)
+      .def_readonly("constraint", &FixedPointsEstimator::constraint_)
+      .def_readonly("acceleration", &FixedPointsEstimator::acceleration_)
+      .def_readonly("velocity", &FixedPointsEstimator::velocity_);
+
+  bp::class_<FixedRobotEstimator, bp::bases<BaseEstimator>>(
+      "FixedRobotEstimator",
+      bp::init<double, pinocchio::Model &, pinocchio::Data &, bool,
+               ConstRefVector3d, ConstRefMatrix3d>());
+}
+
+BaseEstimator::BaseEstimator(double dt, const pinocchio::Model &model,
+                             pinocchio::Data &data)
+    : dt_(dt), model_(model), data_(data) {
+  initialized_ = false;
+  base_index_ = model_.getFrameId("base_link");
+  num_joints_ = model_.nv - 6;
+  estimated_q_ = Eigen::VectorXd::Zero(model_.nq);
+  estimated_qv_ = Eigen::VectorXd::Zero(model_.nv);
+}
+
+BaseEstimator::BaseEstimator(const BaseEstimator &other)
+    : dt_(other.dt_), t_(other.t_), model_(other.model_), data_(other.data_),
+      estimated_q_(other.estimated_q_), num_joints_(other.num_joints_),
+      estimated_qv_(other.estimated_qv_), effort_(other.effort_),
+      initialized_(other.initialized_.load()), base_index_(other.base_index_) {}
+
+void BaseEstimator::PublishState(size_t seconds, size_t nanoseconds) const {
+  sensor_msgs::msg::JointState joint_state;
+  joint_state.header.stamp.sec = seconds;
+  joint_state.header.stamp.nanosec = nanoseconds;
+  size_t num_joints = estimated_q_.size() - 7;
+  joint_state.position.resize(num_joints);
+  joint_state.velocity.resize(num_joints);
+  const auto &joint_names = model_.names;
+  joint_state.name = std::vector<std::string>(joint_names.end() - num_joints,
+                                              joint_names.end());
+  Eigen::VectorXd::Map(&joint_state.position[0], num_joints) =
+      estimated_q_.tail(num_joints);
+  Eigen::VectorXd::Map(&joint_state.velocity[0], num_joints) =
+      estimated_qv_.tail(num_joints);
+  if (effort_.size() > 0) {
+    joint_state.effort.resize(num_joints);
+    Eigen::VectorXd::Map(&joint_state.effort[0], num_joints) = effort_;
+  }
+
+  joint_state_publisher->publish(joint_state);
+  auto world_T_base = geometry_msgs::msg::TransformStamped();
+  world_T_base.header.stamp = joint_state.header.stamp;
+  world_T_base.header.frame_id = "world";
+  world_T_base.child_frame_id = "base_link";
+  world_T_base.transform.translation.x = estimated_q_(0);
+  world_T_base.transform.translation.y = estimated_q_(1);
+  world_T_base.transform.translation.z = estimated_q_(2);
+  world_T_base.transform.rotation.x = estimated_q_(3);
+  world_T_base.transform.rotation.y = estimated_q_(4);
+  world_T_base.transform.rotation.z = estimated_q_(5);
+  world_T_base.transform.rotation.w = estimated_q_(6);
+  tf_broadcaster->sendTransform(world_T_base);
+
+  geometry_msgs::msg::TwistStamped twist;
+  twist.header.stamp = world_T_base.header.stamp;
+  twist.header.frame_id = "base_link";
+  const auto base_twist = pinocchio::getFrameVelocity(
+      model_, data_, base_index_,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED);
+  twist.twist.linear = ToVector(base_twist.linear());
+  twist.twist.angular = ToVector(estimated_qv_.head<3>());
+  twist_publisher->publish(twist);
 }
 
 FixedPointsEstimator::FixedPointsEstimator(double dt,
                                            const pinocchio::Model &model,
                                            pinocchio::Data &data,
                                            const std::vector<size_t> &indexes)
-    : dt_(dt), model_(model), data_(data), indexes_(indexes) {
-  initialized_ = false;
-  num_joints_ = model_.nv - 6;
-  estimated_q_ = Eigen::VectorXd::Zero(model_.nq);
-  estimated_qv_ = Eigen::VectorXd::Zero(model_.nv);
-}
+    : BaseEstimator(dt, model, data), indexes_(indexes) {}
 
 FixedPointsEstimator::FixedPointsEstimator(
     const ftn_solo_control::FixedPointsEstimator &other)
-    : t_(other.t_), dt_(other.dt_),
+    : BaseEstimator(other),
       sensor_angular_velocity_(other.sensor_angular_velocity_),
-      num_joints_(other.num_joints_), model_(other.model_), data_(other.data_),
       indexes_(other.indexes_), poses_(other.poses_),
       touching_poses_(other.touching_poses_), indexes_map_(other.indexes_map_),
-      initialized_(other.Initialized()), estimated_q_(other.estimated_q_),
-      estimated_qv_(other.estimated_qv_), constraint_(other.constraint_),
-      eef_positions_(other.eef_positions_), velocity_(other.velocity_),
-      acceleration_(other.acceleration_) {}
+      constraint_(other.constraint_), eef_positions_(other.eef_positions_),
+      velocity_(other.velocity_), acceleration_(other.acceleration_) {}
 
 void FixedPointsEstimator::SetData(double t, ConstRefVectorXd q,
-                                   ConstRefVectorXd qv,
+                                   const VectorXd qv,
                                    const SensorData &sensors) {
   t_ = t;
   Eigen::Quaterniond new_orientation(
@@ -124,7 +219,10 @@ void FixedPointsEstimator::SetData(double t, ConstRefVectorXd q,
       sensors.imu_data.attitude[2], sensors.imu_data.attitude[3]);
   measured_orientation_ = (initial_orientation_ * new_orientation).coeffs();
   estimated_q_.tail(num_joints_) = q;
-  estimated_qv_.tail(num_joints_) = qv;
+  // unitree
+  double alpha = 0; // 0.95;
+  estimated_qv_.tail(num_joints_) =
+      alpha * estimated_qv_.tail(num_joints_) + (1 - alpha) * qv;
   sensor_angular_velocity_ = sensors.imu_data.angular_velocity;
 }
 
@@ -183,7 +281,7 @@ void FixedPointsEstimator::InitAndEstimate() {
 
 void FixedPointsEstimator::UpdateIndexes() {
   indexes_.clear();
-  for (const auto pose : poses_) {
+  for (const auto &pose : poses_) {
     indexes_.push_back(pose.first);
   }
 }
@@ -233,7 +331,6 @@ void FixedPointsEstimator::EstimateInternal() {
   touching_poses_ = {};
 
   Eigen::Quaterniond q0;
-  Eigen::MatrixXd c2 = constraint_;
   while (grad > 1e-6 && errors.norm() / num_constraints > 1e-4) {
     size_t i = 0;
     GetConstraintJacobian(model_, data_, poses_, constraint_, &touching_poses_,
@@ -248,7 +345,7 @@ void FixedPointsEstimator::EstimateInternal() {
     Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 2, 6);
     q0 = Eigen::Quaterniond(estimated_q_[6], estimated_q_[3], estimated_q_[4],
                             estimated_q_[5]);
-    double alpha = 0.05;
+    double alpha = 1.0;
     Eigen::Vector3d quat_err =
         alpha *
         (q0.toRotationMatrix() *
@@ -266,48 +363,13 @@ void FixedPointsEstimator::EstimateInternal() {
     pinocchio::computeJointJacobians(model_, data_, estimated_q_);
   }
   GetConstraintJacobian(model_, data_, poses_, constraint_, &touching_poses_);
-  PublishMarkers(poses_, touching_poses_, data_);
   EstimateVelocities();
+  PublishMarkers(poses_, touching_poses_, data_);
   UpdateInternals(touching_poses_, placements);
 }
 
-void FixedPointsEstimator::PublishState(size_t seconds,
-                                        size_t nanoseconds) const {
-  sensor_msgs::msg::JointState joint_state;
-  joint_state.header.stamp.sec = seconds;
-  joint_state.header.stamp.nanosec = nanoseconds;
-  size_t num_joints = estimated_q_.size() - 7;
-  joint_state.position.resize(num_joints);
-  joint_state.velocity.resize(num_joints);
-  const auto &joint_names = model_.names;
-  joint_state.name = std::vector<std::string>(joint_names.end() - num_joints,
-                                              joint_names.end());
-  Eigen::VectorXd::Map(&joint_state.position[0], num_joints) =
-      estimated_q_.tail(num_joints);
-  Eigen::VectorXd::Map(&joint_state.velocity[0], num_joints) =
-      estimated_qv_.tail(num_joints);
-  if (effort_.size() > 0) {
-    joint_state.effort.resize(num_joints);
-    Eigen::VectorXd::Map(&joint_state.effort[0], num_joints) = effort_;
-  }
-
-  joint_state_publisher->publish(joint_state);
-  auto world_T_base = geometry_msgs::msg::TransformStamped();
-  world_T_base.header.stamp = joint_state.header.stamp;
-  world_T_base.header.frame_id = "world";
-  world_T_base.child_frame_id = "base_link";
-  world_T_base.transform.translation.x = estimated_q_(0);
-  world_T_base.transform.translation.y = estimated_q_(1);
-  world_T_base.transform.translation.z = estimated_q_(2);
-  world_T_base.transform.rotation.x = estimated_q_(3);
-  world_T_base.transform.rotation.y = estimated_q_(4);
-  world_T_base.transform.rotation.z = estimated_q_(5);
-  world_T_base.transform.rotation.w = estimated_q_(6);
-  tf_broadcaster->sendTransform(world_T_base);
-}
-
 void FixedPointsEstimator::EstimateVelocities() {
-  const double alpha = 10;
+  const double alpha = 1;
   size_t num_constraints = poses_.size() * 3;
   Eigen::MatrixXd J = Eigen::MatrixXd::Zero(num_constraints + 3, model_.nv);
   J.block<3, 3>(0, 3) =
@@ -383,6 +445,48 @@ FixedPointsEstimator::CreateFrictionCone(size_t frame_index,
       GetTouchingPose(model_, data_, frame_index, new_orientation.col(2));
   new_pose.translation() += pose.translation();
   return FrictionCone(mu, num_sides, new_pose);
+}
+
+FixedRobotEstimator::FixedRobotEstimator(double dt,
+                                         const pinocchio::Model &model,
+                                         pinocchio::Data &data,
+                                         bool fixed_orientation,
+                                         ConstRefVector3d position,
+                                         ConstRefMatrix3d orientation)
+    : BaseEstimator(dt, model, data), fixed_orientation_(fixed_orientation),
+      position_(position), orientation_(orientation) {
+  estimated_q_.head<3>() = position_;
+  estimated_q_.segment<4>(3) = orientation_.coeffs();
+}
+
+FixedRobotEstimator::FixedRobotEstimator(
+    const ftn_solo_control::FixedRobotEstimator &other)
+    : BaseEstimator(other), fixed_orientation_(other.fixed_orientation_),
+      position_(other.position_), orientation_(other.orientation_) {}
+
+void FixedRobotEstimator::Init(double t, ConstRefVectorXd q,
+                               ConstRefVectorXd qv, const SensorData &sensors) {
+  t_ = t;
+  estimated_q_.tail(num_joints_) = q;
+  const Eigen::VectorXd copy = qv;
+  estimated_qv_.tail(num_joints_) = qv;
+  initialized_ = true;
+}
+
+void FixedRobotEstimator::Estimate(double t, ConstRefVectorXd q,
+                                   ConstRefVectorXd qv,
+                                   const SensorData &sensors) {
+  t_ = t;
+  estimated_q_.tail(num_joints_) = q;
+  constexpr const double alpha = 0.5;
+  estimated_qv_.tail(num_joints_) =
+      alpha * estimated_qv_.tail(num_joints_) + (1 - alpha) * qv;
+  if (!fixed_orientation_) {
+    orientation_ = Eigen::Quaterniond(
+        sensors.imu_data.attitude[0], sensors.imu_data.attitude[1],
+        sensors.imu_data.attitude[2], sensors.imu_data.attitude[3]);
+    estimated_q_.segment<4>(3) = orientation_.coeffs();
+  }
 }
 
 } // namespace ftn_solo_control

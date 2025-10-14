@@ -98,6 +98,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   InitVisualizationPublisher();
   InitEstimatorPublisher();
+  ExposeEstimators();
   InitWholeBodyPublisher();
   InitTrajectoryPlannerPublisher();
 
@@ -126,25 +127,6 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   bp::class_<FrictionConeMap>("FrictionConeMap")
       .def(bp::map_indexing_suite<FrictionConeMap, true>());
 
-  bp::class_<FixedPointsEstimator>(
-      "FixedPointsEstimator",
-      bp::init<double, pinocchio::Model &, pinocchio::Data &,
-               const std::vector<size_t> &>())
-      .def("init", &FixedPointsEstimator::Init)
-      .def("initialized", &FixedPointsEstimator::Initialized)
-      .def("estimate", &FixedPointsEstimator::Estimate)
-      .def("un_fix", &FixedPointsEstimator::UnFix)
-      .def("set_fixed", &FixedPointsEstimator::SetFixed)
-      .def("get_friction_cones", &FixedPointsEstimator::GetFrictionCones,
-           (bp::arg("mu") = 1.0, bp::arg("num_sides") = 4))
-      .def("create_friction_cone", &FixedPointsEstimator::CreateFrictionCone)
-      .def_readonly("estimated_q", &FixedPointsEstimator::estimated_q_)
-      .def_readonly("estimated_qv", &FixedPointsEstimator::estimated_qv_)
-      .def_readonly("constraint", &FixedPointsEstimator::constraint_)
-      .def_readonly("acceleration", &FixedPointsEstimator::acceleration_)
-      .def_readonly("velocity", &FixedPointsEstimator::velocity_)
-      .def("publish_state", &FixedPointsEstimator::PublishState);
-
   bp::def("get_touching_pose", &GetTouchingPose,
           (bp::arg("model"), bp::arg("data"), bp::arg("frame_index"),
            bp::arg("normal")),
@@ -162,6 +144,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   bp::class_<PieceWiseLinearPositionWrapper>("PieceWiseLinearPosition",
                                              bp::init<>())
       .def("add", &PieceWiseLinearPositionWrapper::AddPoint)
+      .def("close_loop", &PieceWiseLinearPositionWrapper::CloseLoop)
       .def("get", &PieceWiseLinearPositionWrapper::GetValues)
       .def("set_start", &PieceWiseLinearPositionWrapper::SetStart)
       .def_readonly("finished", &PieceWiseLinearPositionWrapper::finished_)
@@ -172,6 +155,7 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
   bp::class_<PieceWiseLinearRotationWrapper>("PieceWiseLinearRotation",
                                              bp::init<>())
       .def("add", &PieceWiseLinearRotationWrapper::AddPoint)
+      .def("close_loop", &PieceWiseLinearPositionWrapper::CloseLoop)
       .def("get", &PieceWiseLinearRotationWrapper::GetValues)
       .def("set_start", &PieceWiseLinearRotationWrapper::SetStart)
       .def_readonly("finished", &PieceWiseLinearRotationWrapper::finished_)
