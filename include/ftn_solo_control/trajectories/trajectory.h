@@ -74,8 +74,11 @@ public:
     }
   }
 
-  inline double StartTime() { return start_time_; }
-  inline double EndTime() { return end_time_; }
+  inline double StartTime() const { return start_time_; }
+  inline double EndTime() const { return end_time_; }
+  inline double GetAlpha(double t) const {
+    return std::clamp((t - start_time_) / (end_time_ - start_time_), 0.0, 1.0);
+  }
 
   virtual PosType ZeroPosition() const = 0;
   virtual VelType ZeroVelocity() const = 0;

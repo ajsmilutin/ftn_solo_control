@@ -65,6 +65,7 @@ add_library(ftn_solo_control_py SHARED
   src/motions/eef_position_motion.cpp
   src/motions/joint_motion.cpp
   src/motions/solver.cpp
+  src/motions/bindings.cpp
   src/trajectories/piecewise_linear.cpp
   src/trajectories/spline.cpp
   src/types/convex_hull_2d.cpp
