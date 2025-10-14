@@ -50,6 +50,8 @@ public:
 
   virtual void SetStart(double t) {}
 
+  virtual double GetAlpha(double t) const { return 0; }
+
   virtual bool Finished() const { return false; }
 
   size_t dim_;
@@ -125,6 +127,8 @@ public:
   void SetStart(double t) override { trajectory_->SetStart(t); }
 
   bool Finished() const override { return trajectory_->finished_; }
+
+  double GetAlpha(double t) const override { return trajectory_->GetAlpha(t); }
 
 protected:
   VectorXi indexes_;

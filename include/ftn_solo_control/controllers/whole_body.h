@@ -21,7 +21,8 @@ public:
                           pinocchio::Data &data,
                           FixedPointsEstimator &estimator,
                           const std::vector<boost::shared_ptr<Motion>> &motions,
-                          ConstRefVectorXd old_torque);
+                          ConstRefVectorXd old_torque, const double alpha = 0,
+                          size_t new_contacts = 0, size_t ending_contacts = 0);
 
   ConstRefVector3d GetForce(size_t eef) const { return forces_.at(eef); }
 

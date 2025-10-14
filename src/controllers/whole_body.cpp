@@ -125,7 +125,8 @@ Eigen::VectorXd WholeBodyController::Compute(
     double t, const pinocchio::Model &model, pinocchio::Data &data,
     FixedPointsEstimator &estimator,
     const std::vector<boost::shared_ptr<Motion>> &motions,
-    ConstRefVectorXd old_torque) {
+    ConstRefVectorXd old_torque, const double alpha, size_t new_contact,
+    size_t ending_contact) {
   size_t motions_dim = GetMotionsDim(motions);
   Eigen::MatrixXd motions_jacobian =
       Eigen::MatrixXd(motions_dim, estimator.NumDoF());
@@ -140,6 +141,22 @@ Eigen::VectorXd WholeBodyController::Compute(
         motion->GetAcceleration(model, data, estimator.estimated_q_,
                                 estimator.estimated_qv_);
     start_row += motion->dim_;
+  }
+
+  size_t start_col = estimator.NumDoF() + estimator.NumJoints();
+  const double eps_start = 1 - 1 / (1 + exp(-(alpha - 0.2) / 0.03));
+  const double eps_end = 1 / (1 + exp(-(alpha - 0.8) / 0.03));
+  for (const auto &eef : eefs_) {
+    if (new_contact == eef) {
+      H_.block<3, 3>(start_col, start_col) =
+          config_.lambda_tangential * tangential_.at(eef) +
+          config_.lambda_tangential * eps_start * normal_.at(eef);
+    } else if (ending_contact == eef) {
+      H_.block<3, 3>(start_col, start_col) =
+          config_.lambda_tangential * tangential_.at(eef) +
+          config_.lambda_tangential * eps_end * normal_.at(eef);
+    }
+    start_col += 3;
   }
 
   H_.topLeftCorner(estimator.NumDoF(), estimator.NumDoF()) =
@@ -167,6 +184,7 @@ Eigen::VectorXd WholeBodyController::Compute(
   A.block(0, estimator.NumJoints() + estimator.NumDoF(), estimator.NumDoF(),
           estimator.NumContacts() * 3) = -estimator.constraint_.transpose();
   b.head(estimator.NumDoF()) = -data.nle;
+  // Friction compensation
   Eigen::VectorXd qd_des = estimator.estimated_qv_.tail(estimator.NumJoints());
   Eigen::VectorXd friction =
       config_.B.array() * qd_des.array() +

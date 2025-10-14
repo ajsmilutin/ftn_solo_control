@@ -93,15 +93,13 @@ bool GetEndOfMotionPrioritized(
     ub(index) = 1.6;
     lb(index) = -1.6;
   }
-  for (size_t index : {7, 10, 13, 16}) {
-    ub(index) = 1.6;
-    lb(index) = -1.6;
-  }
   for (size_t index : {8, 11, 14, 17}) {
     if (q(index + 1) < 0) {
+      lb(index) = -M_PI;
       ub(index) = -kLimit;
     } else {
       lb(index) = kLimit;
+      ub(index) = M_PI;
     }
   }
 
