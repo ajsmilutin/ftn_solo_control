@@ -277,7 +277,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   bp::class_<WholeBodyController>(
       "WholeBodyController",
-      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double>())
+      bp::init<const FixedPointsEstimator &, const FrictionConeMap &, double,
+               const std::string &>())
       .def("compute", &WholeBodyController::Compute)
       .def("get_force", &WholeBodyController::GetForce);
 

@@ -3,7 +3,6 @@ project(ftn_solo_control)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PYTHON_COMPONENTS Interpreter Development NumPy)
 
 
@@ -25,6 +24,8 @@ find_package(proxsuite REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(yaml-cpp REQUIRED)
+
 
 include(cmake/python.cmake)
 findpython(REQUIRED)
@@ -80,7 +81,9 @@ add_library(ftn_solo_control_py SHARED
 
 target_link_libraries(ftn_solo_control_py
                       ${Boost_LIBRARIES}
-                      proxsuite::proxsuite-vectorized)
+                      proxsuite::proxsuite-vectorized
+                      yaml-cpp::yaml-cpp)
+                      
 # target_compile_options(ftn_solo_control_py PUBLIC "-march=native")
 ament_target_dependencies(ftn_solo_control_py rclcpp PythonLibs Eigen3 eigenpy visualization_msgs geometry_msgs tf2 tf2_ros)
 target_include_directories(ftn_solo_control_py SYSTEM PRIVATE ${PYTHON_INCLUDE_DIR})
