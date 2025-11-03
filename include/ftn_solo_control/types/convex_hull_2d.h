@@ -11,13 +11,15 @@ namespace ftn_solo_control {
 
 class ConvexHull2D {
 public:
-  ConvexHull2D(std::vector<Eigen::Vector2d> points);
+  ConvexHull2D(std::vector<Eigen::Vector2d> points = {});
 
   std::vector<Eigen::Vector2d> points_;
 
-  ConstRefMatrixXd Equations() const {return equations_;};
+  ConstRefMatrixXd Equations() const { return equations_; };
   ConstRefVector2d Centroid() const { return centroid_; }
-  double Area() const {return area_;};
+  double Area() const { return area_; };
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const ConvexHull2D &convex_hull);
 
 protected:
   Eigen::MatrixXd equations_;

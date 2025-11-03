@@ -22,6 +22,12 @@
 #include <ftn_solo_control/utils/conversions.h>
 #include <ftn_solo_control/utils/utils.h>
 
+namespace Iir {
+template <> Eigen::Matrix<double, 12, 1> Zero<Eigen::Matrix<double, 12, 1>>() {
+  return Eigen::Matrix<double, 12, 1>::Zero();
+}
+} // namespace Iir
+
 namespace ftn_solo_control {
 
 namespace {
@@ -147,9 +153,9 @@ BaseEstimator::BaseEstimator(double dt, const pinocchio::Model &model,
 
 BaseEstimator::BaseEstimator(const BaseEstimator &other)
     : dt_(other.dt_), t_(other.t_), model_(other.model_), data_(other.data_),
-      estimated_q_(other.estimated_q_), num_joints_(other.num_joints_),
-      estimated_qv_(other.estimated_qv_), effort_(other.effort_),
-      initialized_(other.initialized_.load()), base_index_(other.base_index_) {}
+      num_joints_(other.num_joints_), base_index_(other.base_index_),
+      estimated_q_(other.estimated_q_), estimated_qv_(other.estimated_qv_),
+      effort_(other.effort_), initialized_(other.initialized_.load()) {}
 
 void BaseEstimator::PublishState(size_t seconds, size_t nanoseconds) const {
   sensor_msgs::msg::JointState joint_state;
@@ -199,7 +205,10 @@ FixedPointsEstimator::FixedPointsEstimator(double dt,
                                            const pinocchio::Model &model,
                                            pinocchio::Data &data,
                                            const std::vector<size_t> &indexes)
-    : BaseEstimator(dt, model, data), indexes_(indexes) {}
+    : BaseEstimator(dt, model, data), indexes_(indexes) {
+  double sample_rate = 1.0 / dt;
+  qv_filter_.setup(6, sample_rate, 200.0);
+}
 
 FixedPointsEstimator::FixedPointsEstimator(
     const ftn_solo_control::FixedPointsEstimator &other)
@@ -208,7 +217,8 @@ FixedPointsEstimator::FixedPointsEstimator(
       indexes_(other.indexes_), poses_(other.poses_),
       touching_poses_(other.touching_poses_), indexes_map_(other.indexes_map_),
       constraint_(other.constraint_), eef_positions_(other.eef_positions_),
-      velocity_(other.velocity_), acceleration_(other.acceleration_) {}
+      velocity_(other.velocity_), acceleration_(other.acceleration_),
+      qv_filter_(other.qv_filter_) {}
 
 void FixedPointsEstimator::SetData(double t, ConstRefVectorXd q,
                                    const VectorXd qv,
@@ -220,9 +230,8 @@ void FixedPointsEstimator::SetData(double t, ConstRefVectorXd q,
   measured_orientation_ = (initial_orientation_ * new_orientation).coeffs();
   estimated_q_.tail(num_joints_) = q;
   // unitree
-  double alpha = 0; // 0.95;
-  estimated_qv_.tail(num_joints_) =
-      alpha * estimated_qv_.tail(num_joints_) + (1 - alpha) * qv;
+  const Eigen::VectorXd copy = qv;
+  estimated_qv_.tail(num_joints_) = qv_filter_.filter(copy);
   sensor_angular_velocity_ = sensors.imu_data.angular_velocity;
 }
 
@@ -240,6 +249,8 @@ void FixedPointsEstimator::Init(double t, ConstRefVectorXd q,
       Eigen::Quaterniond(Eigen::AngleAxisd(-phi, Eigen::Vector3d::UnitZ()));
   estimated_q_(2) = 0.0;
   estimated_q_(6) = 1.0;
+  const Eigen::VectorXd copy = qv;
+  while ((qv_filter_.filter(copy) - qv).norm() > 1e-6);
   SetData(t, q, qv, sensors);
   thread_ = std::thread(&FixedPointsEstimator::InitAndEstimate, this);
 }
@@ -457,18 +468,22 @@ FixedRobotEstimator::FixedRobotEstimator(double dt,
       position_(position), orientation_(orientation) {
   estimated_q_.head<3>() = position_;
   estimated_q_.segment<4>(3) = orientation_.coeffs();
+  double sample_rate = 1.0 / dt;
+  qv_filter_.setup(6, sample_rate, 50.0);
 }
 
 FixedRobotEstimator::FixedRobotEstimator(
     const ftn_solo_control::FixedRobotEstimator &other)
     : BaseEstimator(other), fixed_orientation_(other.fixed_orientation_),
-      position_(other.position_), orientation_(other.orientation_) {}
+      position_(other.position_), orientation_(other.orientation_),
+      qv_filter_(other.qv_filter_) {}
 
 void FixedRobotEstimator::Init(double t, ConstRefVectorXd q,
                                ConstRefVectorXd qv, const SensorData &sensors) {
   t_ = t;
   estimated_q_.tail(num_joints_) = q;
   const Eigen::VectorXd copy = qv;
+  while ((qv_filter_.filter(copy) - qv).norm() > 1e-6);
   estimated_qv_.tail(num_joints_) = qv;
   initialized_ = true;
 }

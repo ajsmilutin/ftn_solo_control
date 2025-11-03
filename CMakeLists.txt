@@ -8,7 +8,7 @@ set(PYTHON_COMPONENTS Interpreter Development NumPy)
 
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 endif()
 
 # find dependencies
@@ -59,6 +59,10 @@ include_directories(${proxsuite_INCLUDE_DIRS})
 #add_compile_definitions(SKIP_PUBLISH_MARKERS)
 # create the lib
 add_library(ftn_solo_control_py SHARED 
+  src/iir/biquad.cpp
+  src/iir/butterworth.cpp
+  src/iir/cascade.cpp
+  src/iir/pole_filter.cpp
   src/controllers/whole_body.cpp
   src/motions/com_motion.cpp
   src/motions/eef_rotation_motion.cpp

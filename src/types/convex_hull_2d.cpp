@@ -3,6 +3,9 @@
 #include <iostream>
 namespace ftn_solo_control {
 namespace {
+
+const double kEpsilon = 1e-6;
+
 Eigen::Vector2d ComputeIntersection(ConstRefVector2d p0,
                                     ConstRefVector2d direction_0,
                                     ConstRefVector2d p1,
@@ -22,7 +25,6 @@ inline double ComputeTriangleArea(ConstRefVector2d p0, ConstRefVector2d p1,
                   (p0.x() * (p1.y() - p2.y()) + p1.x() * (p2.y() - p0.y()) +
                    p2.x() * (p0.y() - p1.y())));
 }
-const double kEpsilon = 1e-6;
 
 } // namespace
 
@@ -60,16 +62,16 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
         (points_1.at((i + 1) % points_1.size()) - points_1.at(i)).normalized();
     const Eigen::Vector2d normal(-direction(1), direction(0));
     const double offset = -normal.dot(points_1.at(i));
-    bool prev_point_in = points_2.front().dot(normal) + offset > kEpsilon;
+    bool prev_point_in = points_2.front().dot(normal) + offset > 0;
     for (size_t j = 0; j < points_2.size(); ++j) {
       const auto &current_point = points_2.at((j + 1) % points_2.size());
       const auto &prev_point = points_2.at(j);
 
-      const bool current_point_in =
-          current_point.dot(normal) + offset > kEpsilon;
+      const bool current_point_in = current_point.dot(normal) + offset > 0;
       Eigen::Vector2d intersection = ComputeIntersection(
           prev_point, (current_point - prev_point).normalized(), points_1.at(i),
           direction);
+
       if (current_point_in) {
         if (!prev_point_in &&
             (intersection - current_point).norm() > kEpsilon) {
@@ -80,19 +82,31 @@ ConvexHull2D Intersect(const ConvexHull2D &convex_hull_1,
                  (intersection - prev_point).norm() > kEpsilon) {
         new_points.push_back(intersection);
       }
+
       prev_point_in = current_point_in;
     }
     points_2 = std::move(new_points);
   }
   std::vector<Eigen::Vector2d> clean_points;
-  clean_points.push_back(points_2.front());
-  for (const auto &pt : points_2) {
-    if ((pt - clean_points.back()).norm() > 1e-3 &&
-        (pt - clean_points.front()).norm() > 1e-3) {
-      clean_points.push_back(pt);
+  if (points_2.size() > 0) {
+    clean_points.push_back(points_2.front());
+    for (const auto &pt : points_2) {
+      if ((pt - clean_points.back()).norm() > 1e-3 &&
+          (pt - clean_points.front()).norm() > 1e-3) {
+        clean_points.push_back(pt);
+      }
     }
   }
+
   return ConvexHull2D(clean_points);
+}
+
+std::ostream &operator<<(std::ostream &os, const ConvexHull2D &convex_hull) {
+  os << "ConvexHull2D with " << convex_hull.points_.size() << " points: ";
+  for (const auto &pt : convex_hull.points_) {
+    os << pt.transpose() << " ";
+  }
+  return os;
 }
 
 } // namespace ftn_solo_control
