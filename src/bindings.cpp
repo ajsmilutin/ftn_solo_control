@@ -134,7 +134,8 @@ BOOST_PYTHON_MODULE(libftn_solo_control_py) {
 
   bp::class_<TrajectoryPlanner>(
       "TrajectoryPlanner",
-      bp::init<const pinocchio::Model &, size_t, const pinocchio::SE3 &>())
+      bp::init<const pinocchio::Model &, size_t, const pinocchio::SE3 &,
+               const std::string &>())
       .def("start_computation", &TrajectoryPlanner::StartComputation)
       .def("update_eef_trajectory", &TrajectoryPlanner::UpdateEEFTrajectory)
       .def_readonly("com_xy", &TrajectoryPlanner::com_xy_)

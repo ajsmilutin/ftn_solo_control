@@ -5,6 +5,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <yaml-cpp/yaml.h>
 // FTN solo includes
+#include <ftn_solo_control/utils/config_utils.h>
 #include <ftn_solo_control/utils/conversions.h>
 #include <ftn_solo_control/utils/utils.h>
 
@@ -26,29 +27,6 @@ static size_t index = 0;
 constexpr size_t publish_on = 15;
 
 static std::unordered_set<size_t> all_eefs;
-
-Eigen::VectorXd GetVectorFromConfig(const size_t length,
-                                    const YAML::Node &config,
-                                    const std::string &key,
-                                    const double default_value = 0) {
-  if (config[key]) {
-    const auto &cfg = config[key];
-    if (cfg.IsScalar()) {
-      return Eigen::VectorXd::Constant(length, cfg.as<double>());
-    } else {
-      return Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
-          cfg.as<std::vector<double>>().data(), length);
-    }
-  } else {
-    return Eigen::VectorXd::Constant(length, default_value);
-  }
-}
-
-#define READ_DOUBLE_CONFIG(config_node, key, target)                           \
-  if (config_node[#key]) {                                                     \
-    target = config_node[#key].as<double>();                                   \
-  }
-
 } // namespace
 
 void InitWholeBodyPublisher() {

@@ -3,6 +3,7 @@
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
 #include <proxsuite/proxqp/dense/dense.hpp>
+#include <yaml-cpp/yaml.h>
 
 #ifndef SKIP_PUBLISH_MARKERS
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -22,6 +23,7 @@
 #include <ftn_solo_control/motions/eef_rotation_motion.h>
 #include <ftn_solo_control/motions/motion.h>
 #include <ftn_solo_control/motions/solver.h>
+#include <ftn_solo_control/utils/config_utils.h>
 #include <ftn_solo_control/utils/wcm.h>
 
 namespace ftn_solo_control {
@@ -65,7 +67,10 @@ void PublishIK(double t, ConstRefVectorXd q,
 
 void PublishWCM(const ConvexHull2D &wcm, ConstRefVector2d com,
                 const std_msgs::msg::ColorRGBA &color,
-                const std::string ns = "") {
+                const std::string ns = "", double height = 0.001) {
+  if (wcm.points_.size() == 0) {
+    return;
+  }
   visualization_msgs::msg::MarkerArray markers;
   visualization_msgs::msg::Marker marker;
   marker.header.frame_id = "world";
@@ -79,17 +84,17 @@ void PublishWCM(const ConvexHull2D &wcm, ConstRefVector2d com,
     marker.ns = ns + "_" + marker.ns;
   }
   marker.pose = ToPose(pinocchio::SE3::Identity());
-  for (const auto point : wcm.points_) {
+  for (const auto &point : wcm.points_) {
     marker.points.push_back(
-        ToPoint(Eigen::Vector3d(point.x(), point.y(), 0.001)));
+        ToPoint(Eigen::Vector3d(point.x(), point.y(), height)));
   }
   marker.points.push_back(ToPoint(Eigen::Vector3d(
-      wcm.points_.front().x(), wcm.points_.front().y(), 0.001)));
+      wcm.points_.front().x(), wcm.points_.front().y(), height)));
   markers.markers.push_back(marker);
 
   marker.type = visualization_msgs::msg::Marker::SPHERE;
   ++marker.id;
-  marker.pose.position = ToPoint(Eigen::Vector3d(com[0], com[1], 0.001));
+  marker.pose.position = ToPoint(Eigen::Vector3d(com[0], com[1], height));
   marker.scale = ToVector(Eigen::Vector3d::Constant(0.02));
   marker.color = MakeColor(1.0, 1.0, 0.0);
   marker.ns = "com";
@@ -122,14 +127,33 @@ void InitTrajectoryPlannerPublisher() {
 
 TrajectoryPlanner::TrajectoryPlanner(const pinocchio::Model &model,
                                      size_t base_index,
-                                     const pinocchio::SE3 &origin)
+                                     const pinocchio::SE3 &origin,
+                                     const std::string &config)
     : model_(model), data_(pinocchio::Data(model_)), base_index_(base_index),
       origin_(origin), computation_started_(false), computation_done_(false),
-      update_started_(false), update_done_(false) {}
+      update_started_(false), update_done_(false) {
+  YAML::Node config_node = YAML::Load(config);
+  auto tmp_config = config_node["COM"];
+  if (tmp_config) {
+    READ_DOUBLE_CONFIG(tmp_config, Kp, config_.COM.Kp);
+    READ_DOUBLE_CONFIG(tmp_config, Kd, config_.COM.Kd);
+  }
+  tmp_config = config_node["base_linear"];
+  if (tmp_config) {
+    READ_DOUBLE_CONFIG(tmp_config, Kp, config_.base_linear.Kp);
+    READ_DOUBLE_CONFIG(tmp_config, Kd, config_.base_linear.Kd);
+  }
+  tmp_config = config_node["base_angular"];
+  if (tmp_config) {
+    READ_DOUBLE_CONFIG(tmp_config, Kp, config_.base_angular.Kp);
+    READ_DOUBLE_CONFIG(tmp_config, Kd, config_.base_angular.Kd);
+  }
+}
 
 TrajectoryPlanner::TrajectoryPlanner(const TrajectoryPlanner &other)
     : motions_(other.motions_), model_(other.model_), data_(other.data_),
-      base_index_(other.base_index_), origin_(other.origin_) {}
+      base_index_(other.base_index_), origin_(other.origin_),
+      config_(other.config_) {}
 
 TrajectoryPlanner::~TrajectoryPlanner() {
   if (thread_.joinable()) {
@@ -155,24 +179,22 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   pinocchio::computeJointJacobians(model_, data_, q_);
   pinocchio::computeGeneralizedGravity(model_, data_, q_);
   pinocchio::centerOfMass(model_, data_, q_, false);
+  const Eigen::Vector3d com_pos = data_.com[0];
+  const pinocchio::SE3 base_pose = data_.oMf[base_index_];
   auto next_wcm =
       GetProjectedWCMWithTorque(model_, data_, next_friction_cones, max_torque);
-  const Eigen::Vector3d com_pos = data_.com[0];
-
-  const pinocchio::SE3 base_pose = data_.oMf[base_index_];
   com_xy_ = ComputeCoMPos(next_wcm, origin_.translation().head<2>());
 
 #ifndef SKIP_PUBLISH_MARKERS
   PublishWCM(next_wcm, com_pos.head<2>(), MakeColor(0.0, 1.0, 1.0, 0.5), "wcm");
 #endif
-
   com_trajectory_ = boost::make_shared<PieceWiseLinearPosition>();
   Eigen::VectorXd tmp_pos = com_pos.head<2>();
   com_trajectory_->AddPoint(tmp_pos, 0);
   com_trajectory_->AddPoint(com_xy_, duration);
   boost::shared_ptr<COMMotion> com_motion = boost::make_shared<COMMotion>(
       (Vector3b() << true, true, false).finished(), pinocchio::SE3::Identity(),
-      300.5, 1.5);
+      config_.COM.Kp, config_.COM.Kd);
   com_motion->SetTrajectory(com_trajectory_);
 
   base_trajectory_ = boost::make_shared<PieceWiseLinearPosition>();
@@ -183,7 +205,7 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   boost::shared_ptr<EEFPositionMotion> base_linear_motion =
       boost::make_shared<EEFPositionMotion>(
           base_index_, (Vector3b() << false, false, true).finished(), origin_,
-          400.0, 5.0);
+          config_.base_linear.Kp, config_.base_linear.Kd);
   base_linear_motion->SetTrajectory(base_trajectory_);
   base_linear_motion->SetPriority(1, 1.0);
   rotation_trajectory_ = boost::make_shared<PieceWiseLinearRotation>();
@@ -191,9 +213,9 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   rotation_trajectory_->AddPoint(tmp_orientation, 0);
   tmp_orientation = origin_.rotation();
   rotation_trajectory_->AddPoint(tmp_orientation, duration);
-
   boost::shared_ptr<EEFRotationMotion> base_angular_motion =
-      boost::make_shared<EEFRotationMotion>(base_index_, 600, 2.5);
+      boost::make_shared<EEFRotationMotion>(
+          base_index_, config_.base_angular.Kp, config_.base_angular.Kd);
   base_angular_motion->SetTrajectory(rotation_trajectory_);
   base_angular_motion->SetPriority(1, 0.5);
 
@@ -219,6 +241,59 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   PublishWCM(next_wcm, new_com.head<2>(), MakeColor(1.0, 0.0, 0.5, 0.5), "wct");
 #endif
 
+  constexpr const size_t num_phis = 8;
+  ConvexHull2D wcm_with_acceleration_bound;
+
+  std::chrono::steady_clock::time_point start =
+      std::chrono::steady_clock::now();
+  for (size_t i = 0; i < num_phis; ++i) {
+    Eigen::Vector3d acom = 5 * Eigen::Vector3d(cos(i * 2.0 * M_PI / 8.0),
+                                               sin(i * 2.0 * M_PI / 8.0), 0.0);
+    const auto wcm = GetProjectedWCMWithTorque(
+        model_, data_, next_friction_cones, max_torque, acom);
+    if (i == 0) {
+      wcm_with_acceleration_bound = wcm;
+    } else {
+      const auto tmp = Intersect(wcm_with_acceleration_bound, wcm);
+      wcm_with_acceleration_bound = tmp;
+    }
+  }
+  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+  std::cout << "TTTTTTTTTTTTTTTTTTTime taken: "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                     start)
+                   .count()
+            << " milliseconds" << std::endl;
+
+  PublishWCM(wcm_with_acceleration_bound, com_pos.head<2>(),
+             MakeColor(1.0, 1.0, 0.0, 1.0), "wcm_with_acceleration_bound",
+             0.005);
+
+  ConvexHull2D wcm_with_hull_constraint;
+  start = std::chrono::steady_clock::now();
+  for (size_t i = 0; i < num_phis; ++i) {
+    Eigen::Vector3d acom = 5 * Eigen::Vector3d(cos(i * 2.0 * M_PI / 8.0),
+                                               sin(i * 2.0 * M_PI / 8.0), 0.0);
+    if (i == 0) {
+      wcm_with_hull_constraint = GetProjectedWCMWithTorque(
+          model_, data_, next_friction_cones, max_torque, acom);
+    } else {
+      wcm_with_hull_constraint =
+          GetProjectedWCMWithTorque(model_, data_, next_friction_cones,
+                                    max_torque, acom, wcm_with_hull_constraint);
+    }
+  }
+  end = std::chrono::steady_clock::now();
+  std::cout << "TTTTTTTTTTTTTTTime taken: "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                     start)
+                   .count()
+            << " milliseconds" << std::endl;
+
+  PublishWCM(wcm_with_hull_constraint, com_pos.head<2>(),
+             MakeColor(1.0, 0.0, 1.0, 1.0), "wcm_with_hull_constraint", 0.0075);
+
+  // rclcpp::sleep_for(std::chrono::milliseconds(50));
   com_trajectory_->PopPoint();
   com_trajectory_->AddPoint(data_.com[0].head<2>(), duration);
   const auto &base_pose_goal = data_.oMf[base_index_];

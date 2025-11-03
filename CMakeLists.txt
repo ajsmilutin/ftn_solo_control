@@ -78,6 +78,7 @@ add_library(ftn_solo_control_py SHARED
   src/types/friction_cone.cpp
   src/utils/wcm.cpp
   src/utils/conversions.cpp
+  src/utils/config_utils.cpp
   src/utils/visualization_utils.cpp
   src/utils/trajectory_planner.cpp
   src/utils/utils.cpp
