@@ -4,6 +4,7 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 // FTN includes
+#include <ftn_solo_control/iir/butterworth.h>
 #include <ftn_solo_control/types/common.h>
 #include <ftn_solo_control/types/friction_cone.h>
 #include <ftn_solo_control/types/sensors.h>
@@ -60,6 +61,10 @@ public:
   void Estimate(double t, ConstRefVectorXd q, ConstRefVectorXd qv,
                 const SensorData &sensors) override;
 
+protected:
+  Iir::Butterworth::LowPass<6, Iir::DirectFormII<Eigen::Matrix<double, 12, 1>>>
+      qv_filter_;
+
 private:
   bool fixed_orientation_;
   Eigen::Vector3d position_;
@@ -115,5 +120,7 @@ protected:
   std::thread thread_;
   Eigen::Quaterniond initial_orientation_;
   Eigen::Quaterniond measured_orientation_;
+  Iir::Butterworth::LowPass<6, Iir::DirectFormII<Eigen::Matrix<double, 12, 1>>>
+      qv_filter_;
 };
 } // namespace ftn_solo_control
