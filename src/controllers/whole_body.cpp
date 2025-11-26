@@ -5,6 +5,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <yaml-cpp/yaml.h>
 // FTN solo includes
+#include <ftn_solo_control/utils/config_utils.h>
 #include <ftn_solo_control/utils/conversions.h>
 #include <ftn_solo_control/utils/utils.h>
 
@@ -26,29 +27,6 @@ static size_t index = 0;
 constexpr size_t publish_on = 15;
 
 static std::unordered_set<size_t> all_eefs;
-
-Eigen::VectorXd GetVectorFromConfig(const size_t length,
-                                    const YAML::Node &config,
-                                    const std::string &key,
-                                    const double default_value = 0) {
-  if (config[key]) {
-    const auto &cfg = config[key];
-    if (cfg.IsScalar()) {
-      return Eigen::VectorXd::Constant(length, cfg.as<double>());
-    } else {
-      return Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
-          cfg.as<std::vector<double>>().data(), length);
-    }
-  } else {
-    return Eigen::VectorXd::Constant(length, default_value);
-  }
-}
-
-#define READ_DOUBLE_CONFIG(config_node, key, target)                           \
-  if (config_node[#key]) {                                                     \
-    target = config_node[#key].as<double>();                                   \
-  }
-
 } // namespace
 
 void InitWholeBodyPublisher() {
@@ -66,8 +44,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
       qp_(estimator.NumJoints() + estimator.NumDoF() +
               estimator.NumContacts() * 3,
           estimator.NumDoF() + estimator.NumContacts() * 3,
-          estimator.NumJoints() + TotalSides(friction_cones) +
-              estimator.NumContacts(),
+          estimator.NumJoints() + TotalSides(friction_cones),
           false, proxsuite::proxqp::HessianType::Dense) {
   // Parse YAML configuration
   YAML::Node config_node = YAML::Load(config);
@@ -76,6 +53,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
   READ_DOUBLE_CONFIG(config_node, lambda_torque, config_.lambda_torque);
   READ_DOUBLE_CONFIG(config_node, smooth, config_.smooth);
   READ_DOUBLE_CONFIG(config_node, kd, config_.kd);
+  READ_DOUBLE_CONFIG(config_node, force_margin, config_.force_margin);
   config_.B = GetVectorFromConfig(estimator.NumJoints(), config_node, "B");
   config_.Fv = GetVectorFromConfig(estimator.NumJoints(), config_node, "Fv");
   config_.sigma =
@@ -84,7 +62,7 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
   Eigen::MatrixXd C = Eigen::MatrixXd::Zero(qp_.model.n_in, qp_.model.dim);
   size_t start_row = 0;
   size_t start_col = estimator.NumDoF() + estimator.NumJoints();
-  Eigen::VectorXd d = 0.1 * Eigen::VectorXd::Ones(qp_.model.n_in);
+  Eigen::VectorXd d = config_.force_margin * Eigen::VectorXd::Ones(qp_.model.n_in);
   H_ = 0.001 * Eigen::MatrixXd::Identity(qp_.model.dim, qp_.model.dim);
   for (const auto &cone : friction_cones) {
     eefs_.push_back(cone.first);
@@ -100,13 +78,9 @@ WholeBodyController::WholeBodyController(const FixedPointsEstimator &estimator,
     C.block(start_row, start_col, cone.second.GetNumSides(), 3) =
         cone.second.primal_.face_;
     start_row += cone.second.GetNumSides();
-    C.block<1, 3>(start_row, start_col) =
-        cone.second.GetPose().rotation().col(2).transpose();
-    d(start_row) = 0.25;
     // Penalize tangential forces
     H_.block<3, 3>(start_col, start_col) =
         config_.lambda_tangential * tangential_.at(cone.first);
-    ++start_row;
     start_col += 3;
   }
   C.block(start_row, estimator.NumDoF(), estimator.NumJoints(),

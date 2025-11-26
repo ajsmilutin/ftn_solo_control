@@ -82,24 +82,14 @@ bool GetEndOfMotionPrioritized(
   bool solved = false;
   size_t iteration = 0;
   const double alpha = 0.1;
-  Eigen::VectorXd ub = Eigen::VectorXd::Constant(model.nv, 1e10);
-  Eigen::VectorXd lb = Eigen::VectorXd::Constant(model.nv, -1e10);
-  const double kLimit = M_PI / 6;
-  for (size_t index : {6, 9, 12, 15}) {
-    ub(index) = 0.9;
-    lb(index) = -0.9;
-  }
-  for (size_t index : {7, 10, 13, 16}) {
-    ub(index) = 1.6;
-    lb(index) = -1.6;
-  }
+  Eigen::VectorXd ub = model.upperPositionLimit.tail(model.nv);
+  Eigen::VectorXd lb = model.lowerPositionLimit.tail(model.nv);
+  const double kLimit = M_PI / 24;
   for (size_t index : {8, 11, 14, 17}) {
     if (q(index + 1) < 0) {
-      lb(index) = -M_PI;
       ub(index) = -kLimit;
     } else {
       lb(index) = kLimit;
-      ub(index) = M_PI;
     }
   }
 

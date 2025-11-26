@@ -16,7 +16,8 @@ void InitTrajectoryPlannerPublisher();
 class TrajectoryPlanner {
 public:
   TrajectoryPlanner(const pinocchio::Model &model, size_t base_index,
-                    const pinocchio::SE3 &origin);
+                    const pinocchio::SE3 &origin,
+                    const std::string &config = "");
 
   TrajectoryPlanner(const TrajectoryPlanner &other);
 
@@ -71,6 +72,20 @@ private:
   std::atomic<bool> update_started_;
   std::atomic<bool> update_done_;
   std::thread thread_;
+
+  struct PDConfig {
+    double Kp = 100.0;
+    double Kd = 50.0;
+  };
+
+  struct Config {
+    double com_lower_margin = 0.02;
+    double com_upper_margin = 0.04;
+    PDConfig COM{300.0, 1.5};
+    PDConfig base_linear{400.0, 5.0};
+    PDConfig base_angular{600, 2.5};
+  };
+  Config config_;
 };
 
 } // namespace ftn_solo_control

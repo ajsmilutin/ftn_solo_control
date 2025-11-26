@@ -175,7 +175,6 @@ void BaseEstimator::PublishState(size_t seconds, size_t nanoseconds) const {
     joint_state.effort.resize(num_joints);
     Eigen::VectorXd::Map(&joint_state.effort[0], num_joints) = effort_;
   }
-
   joint_state_publisher->publish(joint_state);
   auto world_T_base = geometry_msgs::msg::TransformStamped();
   world_T_base.header.stamp = joint_state.header.stamp;
@@ -250,7 +249,8 @@ void FixedPointsEstimator::Init(double t, ConstRefVectorXd q,
   estimated_q_(2) = 0.0;
   estimated_q_(6) = 1.0;
   const Eigen::VectorXd copy = qv;
-  while ((qv_filter_.filter(copy) - qv).norm() > 1e-6);
+  while ((qv_filter_.filter(copy) - qv).norm() > 1e-6)
+    ;
   SetData(t, q, qv, sensors);
   thread_ = std::thread(&FixedPointsEstimator::InitAndEstimate, this);
 }
@@ -283,7 +283,7 @@ void FixedPointsEstimator::InitAndEstimate() {
   Eigen::Matrix3d rot;
   rot.col(2) = x.cross(y).normalized();
   rot.col(0) = y.cross(rot.col(2)).normalized();
-  rot.col(1) = rot.col(2).cross(rot.col(1));
+  rot.col(1) = rot.col(2).cross(rot.col(0));
   estimated_q_.segment<4>(3) = Eigen::Quaterniond(rot).inverse().coeffs();
   UpdateIndexes();
   EstimateInternal();
