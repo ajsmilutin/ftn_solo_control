@@ -35,6 +35,7 @@ protected:
     double lambda_torque = 0.03;
     double smooth = 0.8;
     double kd = 1;
+    double force_margin = 0.15;
     Eigen::VectorXd B;     // Vector for configuration
     Eigen::VectorXd Fv;    // Vector for configuration
     Eigen::VectorXd sigma; // Vector for configuration
