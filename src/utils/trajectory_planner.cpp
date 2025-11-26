@@ -241,14 +241,14 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   PublishWCM(next_wcm, new_com.head<2>(), MakeColor(1.0, 0.0, 0.5, 0.5), "wct");
 #endif
 
-  constexpr const size_t num_phis = 8;
+  constexpr const size_t num_phis = 32;
   ConvexHull2D wcm_with_acceleration_bound;
 
   std::chrono::steady_clock::time_point start =
       std::chrono::steady_clock::now();
   for (size_t i = 0; i < num_phis; ++i) {
-    Eigen::Vector3d acom = 5 * Eigen::Vector3d(cos(i * 2.0 * M_PI / 8.0),
-                                               sin(i * 2.0 * M_PI / 8.0), 0.0);
+    Eigen::Vector3d acom = 2 * Eigen::Vector3d(cos(i * 2.0 * M_PI / num_phis),
+                                               sin(i * 2.0 * M_PI / num_phis), 0.0);
     const auto wcm = GetProjectedWCMWithTorque(
         model_, data_, next_friction_cones, max_torque, acom);
     if (i == 0) {
@@ -272,8 +272,8 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
   ConvexHull2D wcm_with_hull_constraint;
   start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < num_phis; ++i) {
-    Eigen::Vector3d acom = 5 * Eigen::Vector3d(cos(i * 2.0 * M_PI / 8.0),
-                                               sin(i * 2.0 * M_PI / 8.0), 0.0);
+    Eigen::Vector3d acom = 2 * Eigen::Vector3d(cos(i * 2.0 * M_PI / num_phis),
+                                               sin(i * 2.0 * M_PI / num_phis), 0.0);
     if (i == 0) {
       wcm_with_hull_constraint = GetProjectedWCMWithTorque(
           model_, data_, next_friction_cones, max_torque, acom);
@@ -283,6 +283,8 @@ void TrajectoryPlanner::DoComputation(double t, FrictionConeMap friction_cones,
                                     max_torque, acom, wcm_with_hull_constraint);
     }
   }
+
+
   end = std::chrono::steady_clock::now();
   std::cout << "TTTTTTTTTTTTTTTime taken: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end -
